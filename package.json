@@ -1,0 +1,16 @@
+{
+  "name": "com.percas.unitytools",
+  "version": "0.1.0",
+  "displayName": "Percas Unity Tools",
+  "description": "Editor utilities for Unity projects at Percas Studio.",
+  "unity": "2021.3",
+  "keywords": [
+    "editor",
+    "inspector",
+    "tools"
+  ],
+  "author": {
+    "name": "Percas Studio",
+    "email": "thinhnv@percas.vn"
+  }
+}
