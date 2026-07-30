@@ -1,0 +1,149 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7747aca67930ec54fbc9dc6e78aa1d25, type: 3}
+  m_Name: ObjectDefBuildCache
+  m_EditorClassIdentifier: Assembly-CSharp-Editor::Thinhnv.UnityTools.ObjectDefBuilder.ObjectDefBuilderCacheSO
+  entries:
+  - label: New Object
+    definition: {fileID: 11400000, guid: b097aad359956e14fbaca54d5cc17d8b, type: 2}
+    objectTypeName: BoxSquareC
+    definitionFolder: Assets/@SmashMarket/Data/Object
+    modelPrefix: Cube_C
+    breakPrefix: Cube_C
+    prefabFolder: Assets/@SmashMarket/3D Models/Box/GameObject
+    materialFolder: Assets/@SmashMarket/3D Models/Box/Material
+    sourceFolder: Assets/@SmashMarket/3D Models/Box
+    modelMaterial:
+      template: {fileID: 2100000, guid: 1ee7e66dc68d79d4c9ac919611d43fb4, type: 2}
+      shader: {fileID: 4800000, guid: e5ff214194c4275439c1c060a23ceb0b, type: 3}
+      textureProperty: _BaseMap
+    pieceMaterial:
+      template: {fileID: 2100000, guid: 7c6fc6afd01da7d42b0380db0e9d0e00, type: 2}
+      shader: {fileID: 4800000, guid: be273d8a0d3f1bb4389be0600e72d2a1, type: 3}
+      textureProperty: _MainTexture
+    objectPhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    piecePhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    objectColliderMode: 2
+    pieceColliderMode: 1
+    roundObjectColliderSize: 1
+    roundPieceColliderSize: 0
+    objectMass: 1
+    pieceMass: 0.1
+    objectTag: Object
+    objectLayer: 6
+    pieceLayer: 9
+    modelRotation: {x: 0, y: 180, z: 0}
+    breakRotation: {x: 0, y: 180, z: 0}
+    useWrapper: 1
+    usePieceWrapper: 1
+    wrapperName: Wrapper
+    unpackModel: 1
+    modelVariantMode: 0
+    overwritePrefabs: 1
+    breakSlot: 0
+    maxMagnitude: 5
+    rows:
+    - magnitude: 1
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 7c429c4a705f4d746ba35f7891774705, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: 2fcb6fd5467f7484db5b921e85e9b40e, type: 3}
+      modelTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      pieceTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: e67e907e2a7ddd94aa17f5a9c25c6d17, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 24d317cf9c5421140a9e507be7ea5c95, type: 2}
+      modelBasePrefab: {fileID: 0}
+      modelPrefabX: {fileID: 8866165700652393000, guid: 9ee4cf2f5ed9a084fa214131e614d4ec, type: 3}
+      modelPrefabY: {fileID: 0}
+      modelPrefabZ: {fileID: 0}
+      breakBasePrefab: {fileID: 0}
+      breakPieceX: {fileID: 1711901088716218075, guid: 1f769f1f9dc4bcc4fbb66ed89a905363, type: 3}
+      breakPieceY: {fileID: 0}
+      breakPieceZ: {fileID: 0}
+    - magnitude: 2
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 9375ab98f654be84fa56f5f7ce7afbea, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: c9676b2802e0bf04ab018c11a0568ed4, type: 3}
+      modelTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      pieceTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 063f4c86ac0a3bc489d50d88ab8d6de8, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: ecd630c383067274e813fa77ce75b4e4, type: 2}
+      modelBasePrefab: {fileID: 6207002304271330698, guid: 6f8182b7651ef274db13afd36c5f9f71, type: 3}
+      modelPrefabX: {fileID: 2331578711097350994, guid: 5ef895e5c98765e44b28d5379bd034a3, type: 3}
+      modelPrefabY: {fileID: 2193840495611091674, guid: 35d0e46300fc2a94398bc9470ddb8136, type: 3}
+      modelPrefabZ: {fileID: 4695150551073772418, guid: d672bf016b68c7b4495d4b3ca0a35782, type: 3}
+      breakBasePrefab: {fileID: 1771046285093533348, guid: a1e09c625be15c749a498c13fa98f63e, type: 3}
+      breakPieceX: {fileID: 6236383776808663311, guid: df7edd9b47c05fa47aab53f976e61bb0, type: 3}
+      breakPieceY: {fileID: 5967005394108113607, guid: 934c91235827693499140d993de0c6f7, type: 3}
+      breakPieceZ: {fileID: 5184741272076147339, guid: 7bcb53d8f1b43a746847c7f8737315a7, type: 3}
+    - magnitude: 3
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: b60e96978248d814296b358b12be1e5a, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: dbbc3edc7c140d842a508ca3cbc4d4dd, type: 3}
+      modelTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      pieceTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 14e900b198d67c74d8fc121b89ff82ec, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: bcba5b8a6e94176448cbc3defee4649c, type: 2}
+      modelBasePrefab: {fileID: 1783481798877272353, guid: 7e3a21eeb119641429351172074e6be9, type: 3}
+      modelPrefabX: {fileID: 2894606307678874731, guid: 9dd96389a72a4e44997e44620f378bc7, type: 3}
+      modelPrefabY: {fileID: 6830558685385340893, guid: e959812062927414886288a2237b2b48, type: 3}
+      modelPrefabZ: {fileID: 560021146764113738, guid: b58328046cfb8934083e96aa5cb060ed, type: 3}
+      breakBasePrefab: {fileID: 6283815743835422922, guid: d4227dc8d37f9324f8b472c2b2d72741, type: 3}
+      breakPieceX: {fileID: 8292121157794291472, guid: 3524a447dcafddf4e8e32e07521e28aa, type: 3}
+      breakPieceY: {fileID: 6742054230008529920, guid: c240a22d263699b41b8c8546cc654dd1, type: 3}
+      breakPieceZ: {fileID: 7623087487029073956, guid: ec2e5020ae099304baf3ddeeaefe4b26, type: 3}
+    - magnitude: 4
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 2f7b43fb3f457e448a99f4f43be2d81e, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: e02dde6067b7a2d4f8484e9bb0fe0c87, type: 3}
+      modelTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      pieceTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: addcd2ffc55dc0e46a5d901421e6178f, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 2cb227f6bddb4ce45bc6bc4cbf8f91d6, type: 2}
+      modelBasePrefab: {fileID: 3012287506773879042, guid: 95beca530e1b6c84c9eb6efbe75e0738, type: 3}
+      modelPrefabX: {fileID: 1484308049483390380, guid: 26b430437d3e3284985953d5c0c4a52e, type: 3}
+      modelPrefabY: {fileID: 3167287066615284892, guid: 657e02ec808a50046b6f5223c2bcb534, type: 3}
+      modelPrefabZ: {fileID: 9054509157594473527, guid: 9853712cdadc8794980f691f7b0b90a0, type: 3}
+      breakBasePrefab: {fileID: 3065671869374039129, guid: b8477227d89b5094fa2d0bd71f44c21d, type: 3}
+      breakPieceX: {fileID: 7557213021704443833, guid: f81022cbab0001f4a94f935f640a25e3, type: 3}
+      breakPieceY: {fileID: 8966630143729417138, guid: 99e088df2d89ee44ca701d575fb3bd7f, type: 3}
+      breakPieceZ: {fileID: 4595721799018686334, guid: 9a1351c5eabc9ef4b8a3d658d30d7e14, type: 3}
+    - magnitude: 5
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: c8899ae65990ee8409b5befd28ee2386, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: 910ebeeffd77fcb4d97ad98f8beff6e5, type: 3}
+      modelTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      pieceTexture: {fileID: 2800000, guid: d23727ce4741ee34a8124df088377fc1, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 0f5a01494af3bf541a73a5689e3e773b, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 39b0971f81e301943bd155abec232f68, type: 2}
+      modelBasePrefab: {fileID: 590514141456006432, guid: 3fd5178c9aaccdb4b85b9e611ee2f62a, type: 3}
+      modelPrefabX: {fileID: 3612858425943720504, guid: ad470d8a2e698d3459a3a229989dd5f0, type: 3}
+      modelPrefabY: {fileID: 6262838465333595364, guid: e2d96f29faeac184f8fe145ec521ee5d, type: 3}
+      modelPrefabZ: {fileID: 2467436634065956650, guid: b4e370e805bbe90408e6e8175bc27d6f, type: 3}
+      breakBasePrefab: {fileID: 7569388865273801281, guid: 95b27b221b79d854bb0fc27b54e3684b, type: 3}
+      breakPieceX: {fileID: 6193219618068329185, guid: 937a18211bb902f46b3b7842274bc220, type: 3}
+      breakPieceY: {fileID: 9034431310625086920, guid: 283f14226a1822c459c6a83570258da5, type: 3}
+      breakPieceZ: {fileID: 4881477762658359876, guid: 33ad195dfa74a1f429d2824430983754, type: 3}
