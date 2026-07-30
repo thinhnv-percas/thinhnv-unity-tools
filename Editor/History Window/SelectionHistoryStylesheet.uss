@@ -1,0 +1,109 @@
+.favorite {
+    font-size: 12px;
+    -unity-text-align: middle-left;
+    margin: 2px;
+    padding: 3px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-color: black;
+    border-width: 1px;
+    border-radius: 3px;
+}
+
+.favorite #DragArea {
+}
+
+.favorite Label {
+    margin-left: 18px;
+}
+
+.favorite #Icon {
+    max-width: 16px;
+    max-height: 16px;
+    position: absolute;
+    align-self: flex-start;
+    min-height: 16px;
+    min-width: 16px;
+}
+
+.favorite #RemoveIcon {
+    max-width: 16px;
+    max-height: 16px;
+    right: 4px;
+    position: absolute;
+}
+
+.favorite #OpenPrefabIcon {
+    max-width: 16px;
+    max-height: 16px;
+    right: 30px;
+    position: absolute;
+}
+
+.favorites-missing-reference {
+    color: yellow;
+}
+
+.history {
+    font-size: 12px;
+    -unity-text-align: middle-left;
+    margin: 2px;
+    padding: 3px;
+    background-color: rgba(0, 0, 0, 0.1);
+    border-color: black;
+    border-width: 1px;
+    border-radius: 3px;
+}
+
+.unreferencedObject Label {
+    color: rgb(93, 93, 93);
+}
+
+.sceneObject Label {
+    color: darkseagreen;
+}
+
+.assetObject Label {
+}
+
+.history Label {
+    margin-left: 17px;
+}
+
+.history #Icon {
+    max-width: 16px;
+    max-height: 16px;
+    position: absolute;
+    align-self: flex-start;
+}
+
+.history #PingIcon {
+    max-width: 16px;
+    max-height: 16px;
+    right: 0;
+    position: absolute;
+}
+
+.history #Favorite {
+    max-width: 16px;
+    max-height: 16px;
+    right: 25px;
+    position: absolute;
+}
+
+.history #OpenPrefabIcon {
+    max-width: 16px;
+    max-height: 16px;
+    right: 50px;
+    position: absolute;
+}
+
+.searchToolbar {
+    margin-top: 3px;
+    margin-bottom: 3px;
+    min-height: 19px;
+    width: auto;
+}
+
+.hidden {
+    display: none;
+}
