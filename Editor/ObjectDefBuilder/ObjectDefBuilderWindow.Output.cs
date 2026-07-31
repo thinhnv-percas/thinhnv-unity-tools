@@ -66,6 +66,44 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         }
 
         /// <summary>
+        /// Mesh baking, split the way the prefabs are: the shared base on its own toggle, the size
+        /// prefabs (uniform 1x1 and each axis prefab) on another.
+        /// </summary>
+        private static void DrawMeshBakeOptions(ObjectDefBuildEntry entry)
+        {
+            EditorGUILayout.Space(2);
+            entry.bakeBaseMesh = EditorGUILayout.Toggle(
+                new GUIContent("Bake Base Mesh",
+                    "Flatten the *_ModelBase model hierarchy into one baked mesh asset."),
+                entry.bakeBaseMesh);
+            entry.bakeSizeMesh = EditorGUILayout.Toggle(
+                new GUIContent("Bake Size Mesh",
+                    "Flatten the uniform 1x1 prefab and each axis prefab that is not a variant."),
+                entry.bakeSizeMesh);
+
+            if (!entry.bakeBaseMesh && !entry.bakeSizeMesh)
+            {
+                return;
+            }
+
+            using (new EditorGUI.IndentLevelScope())
+            {
+                EditorGUILayout.LabelField(" ", $"meshes -> {MeshBakeFactory.MeshFolder(entry)}",
+                    EditorStyles.miniLabel);
+            }
+
+            if (entry.bakeSizeMesh && entry.modelVariantMode == ModelVariantMode.RotateBase)
+            {
+                EditorGUILayout.HelpBox(
+                    "In RotateBase mode the axis prefabs are variants of the base, and a variant cannot " +
+                    "delete the hierarchy it inherits - those are skipped with a warning. Use Bake Base " +
+                    "Mesh instead; the variants pick the baked mesh up from the base. Bake Size Mesh " +
+                    "still applies to the uniform 1x1 prefab and to any axis with its own model.",
+                    MessageType.Info);
+            }
+        }
+
+        /// <summary>
         /// A single wrapper between the shatter root and its piece pivots, mirroring the object prefab's
         /// wrapper. It carries no components, so an axis variant overrides just that one transform.
         /// </summary>
@@ -118,6 +156,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             DrawWrapperOption(entry);
             DrawPieceWrapperOption(entry);
             DrawModelVariantMode(entry);
+            DrawMeshBakeOptions(entry);
             entry.breakSlot = (BreakTargetSlot)EditorGUILayout.EnumPopup(
                 new GUIContent("Break Slot", "Which BreakEffectGroup slot the pieces prefab is written to."),
                 entry.breakSlot);

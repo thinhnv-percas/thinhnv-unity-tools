@@ -54,6 +54,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             {
                 result.uniform = Build(entry, row.modelSource, material,
                     entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, 1, BuildAxis.None));
+                BakeSize(entry, result.uniform);
                 return result;
             }
 
@@ -97,13 +98,35 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             {
                 result.basePrefab = Build(entry, row.modelSource, material,
                     ObjectDefNaming.BaseFolder(entry), ObjectDefNaming.ModelBasePrefab(entry, magnitude));
+
+                // Bake before the variants exist, so they derive from the already-flattened base.
+                if (entry.bakeBaseMesh)
+                {
+                    MeshBakeFactory.Bake(entry, result.basePrefab);
+                }
             }
 
             foreach (BuildAxis axis in BuildAxisExtensions.All)
             {
-                result.SetAxis(axis, row.PerAxisModelSource(axis) != null
-                    ? BuildAxisModel(entry, row, material, magnitude, axis)
-                    : Variant(entry, result.basePrefab, magnitude, axis));
+                if (row.PerAxisModelSource(axis) != null)
+                {
+                    GameObject own = BuildAxisModel(entry, row, material, magnitude, axis);
+                    BakeSize(entry, own);
+                    result.SetAxis(axis, own);
+                    continue;
+                }
+
+                // A variant inherits the base hierarchy, so it is baked via the base, never on its own.
+                result.SetAxis(axis, Variant(entry, result.basePrefab, magnitude, axis));
+            }
+        }
+
+        /// <summary>Bake a standalone size prefab when the option is on; variants are handled by the base.</summary>
+        private static void BakeSize(ObjectDefBuildEntry entry, GameObject prefab)
+        {
+            if (entry.bakeSizeMesh && prefab != null)
+            {
+                MeshBakeFactory.Bake(entry, prefab);
             }
         }
 
@@ -118,9 +141,12 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         private static void BuildSeparate(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
             Material material, int magnitude, ref ModelBuildResult result)
         {
-            result.axisX = BuildAxisModel(entry, row, material, magnitude, BuildAxis.X);
-            result.axisY = BuildAxisModel(entry, row, material, magnitude, BuildAxis.Y);
-            result.axisZ = BuildAxisModel(entry, row, material, magnitude, BuildAxis.Z);
+            foreach (BuildAxis axis in BuildAxisExtensions.All)
+            {
+                GameObject prefab = BuildAxisModel(entry, row, material, magnitude, axis);
+                BakeSize(entry, prefab);
+                result.SetAxis(axis, prefab);
+            }
         }
 
         private static GameObject BuildAxisModel(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
@@ -136,6 +162,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         {
             GameObject shared = Build(entry, row.modelSource, material,
                 entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, magnitude, BuildAxis.X));
+            BakeSize(entry, shared);
+
             result.axisX = shared;
             result.axisY = shared;
             result.axisZ = shared;

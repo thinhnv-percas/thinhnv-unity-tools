@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 
@@ -11,28 +12,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     /// </summary>
     public partial class ObjectDefBuilderWindow
     {
-        private void DrawBuildBar(ObjectDefBuildEntry entry)
-        {
-            EditorGUILayout.Space(4);
-            if (!string.IsNullOrEmpty(status))
-            {
-                EditorGUILayout.HelpBox(status, MessageType.Info);
-            }
-
-            using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(entry.modelPrefix)))
-            {
-                if (GUILayout.Button("Build All Sizes", GUILayout.Height(32)))
-                {
-                    RequestBuild(entry);
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(entry.modelPrefix))
-            {
-                EditorGUILayout.HelpBox("Set a Model Prefix - it names every generated asset.", MessageType.Warning);
-            }
-        }
-
         /// <summary>
         /// Queue a build for after this OnGUI pass. Creating prefabs and refreshing the AssetDatabase
         /// from inside a layout group can leave IMGUI mid-group when the importer repaints.
@@ -55,7 +34,13 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 return;
             }
 
-            if (entry.definition == null)
+            if (entry.buildTargets == BuildTargets.None)
+            {
+                status = "Nothing selected to build - tick at least one Build target.";
+                return;
+            }
+
+            if (entry.Builds(BuildTargets.Definition) && entry.definition == null)
             {
                 entry.definition = ObjectDefinitionWriter.LoadOrCreate(entry.definitionFolder,
                     string.IsNullOrEmpty(entry.objectTypeName) ? entry.modelPrefix : entry.objectTypeName);
@@ -63,6 +48,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             var write = new DefinitionWrite();
             int sizes = 0;
+            lastBuilt.Clear();
+            lastBuiltFolder = entry.prefabFolder;
 
             foreach (ObjectDefBuildRow row in entry.rows)
             {
@@ -76,20 +63,42 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     continue;
                 }
 
-                BuildRow(entry, row, write);
+                BuildRow(entry, row, write, lastBuilt);
                 sizes++;
             }
 
-            ObjectDefinitionWriter.Write(entry.definition, SmashMarketBridge.ObjectTypeValue(entry.objectTypeName),
-                write, entry.breakSlot);
+            if (entry.Builds(BuildTargets.Definition))
+            {
+                ObjectDefinitionWriter.Write(entry.definition,
+                    SmashMarketBridge.ObjectTypeValue(entry.objectTypeName), write, entry.breakSlot);
+                Track(lastBuilt, entry.definition);
+            }
 
             EditorUtility.SetDirty(cache);
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            status = sizes == 0
-                ? "Nothing to build - no included size has a Model or Break Model."
-                : $"Built {sizes} size(s) into '{entry.definition.name}'. See the Console for warnings.";
+            ReportBuild(entry, sizes);
+        }
+
+        /// <summary>Say what the run actually wrote, so a narrowed pass does not read like a full build.</summary>
+        private void ReportBuild(ObjectDefBuildEntry entry, int sizes)
+        {
+            if (sizes == 0)
+            {
+                status = "Nothing to build - no included size has a Model or Break Model.";
+                Debug.Log($"[ObjectDefBuilder] {status}");
+                return;
+            }
+
+            string scope = entry.buildTargets == BuildTargets.All
+                ? "everything"
+                : entry.buildTargets.ToString();
+            string target = entry.Builds(BuildTargets.Definition) && entry.definition != null
+                ? $" into '{entry.definition.name}'"
+                : string.Empty;
+
+            status = $"Built {scope} for {sizes} size(s){target}. See the Console for warnings.";
             Debug.Log($"[ObjectDefBuilder] {status}", entry.definition);
         }
 
@@ -98,14 +107,27 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         /// rows. A prefab that came out null keeps whatever the cache already held, so a partially
         /// authored row never clears working data.
         /// </summary>
-        private static void BuildRow(ObjectDefBuildEntry entry, ObjectDefBuildRow row, DefinitionWrite write)
+        private static void BuildRow(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            DefinitionWrite write, List<Object> built)
         {
-            BuildMaterials(entry, row);
+            // Skipped steps leave the row's cached materials/prefabs in place, which is what the
+            // remaining steps and the definition write then reuse.
+            if (entry.Builds(BuildTargets.Materials))
+            {
+                BuildMaterials(entry, row);
+                Track(built, row.modelMaterial);
+                Track(built, row.pieceMaterial);
+            }
 
-            BreakBuildResult pieces = BreakPiecePrefabFactory.Build(
-                entry, row.breakSource, row.pieceMaterial, row.magnitude);
-            ModelBuildResult models = ObjectModelPrefabFactory.BuildForSize(
-                entry, row, row.modelMaterial, row.magnitude);
+            BreakBuildResult pieces = entry.Builds(BuildTargets.BreakPieces)
+                ? BreakPiecePrefabFactory.Build(entry, row.breakSource, row.pieceMaterial, row.magnitude)
+                : default;
+
+            ModelBuildResult models = entry.Builds(BuildTargets.Models)
+                ? ObjectModelPrefabFactory.BuildForSize(entry, row, row.modelMaterial, row.magnitude)
+                : default;
+
+            TrackResults(built, pieces, models);
 
             row.breakBasePrefab = pieces.basePrefab ?? row.breakBasePrefab;
             row.modelBasePrefab = models.basePrefab ?? row.modelBasePrefab;
@@ -135,6 +157,30 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 {
                     axis = axis, magnitude = row.magnitude, model = model, breakPieces = breakPieces,
                 });
+            }
+        }
+
+        /// <summary>Record everything this run actually produced, so the result bar can select it.</summary>
+        private static void TrackResults(List<Object> built, BreakBuildResult pieces, ModelBuildResult models)
+        {
+            Track(built, pieces.basePrefab);
+            Track(built, pieces.uniform);
+            Track(built, models.basePrefab);
+            Track(built, models.uniform);
+
+            foreach (BuildAxis axis in BuildAxisExtensions.All)
+            {
+                Track(built, pieces.ForAxis(axis));
+                Track(built, models.ForAxis(axis));
+            }
+        }
+
+        /// <summary>Append once - Shared mode hands back the same prefab for all three axes.</summary>
+        private static void Track(List<Object> built, Object asset)
+        {
+            if (asset != null && !built.Contains(asset))
+            {
+                built.Add(asset);
             }
         }
 

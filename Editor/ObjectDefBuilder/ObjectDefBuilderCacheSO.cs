@@ -97,6 +97,23 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                  "Missing prefabs are still created either way.")]
         public bool overwritePrefabs = true;
 
+        [Tooltip("What a build writes. Untick to run a narrower pass - shatter prefabs only, materials " +
+                 "only - and the rest is left as the last build cached it.")]
+        public BuildTargets buildTargets = BuildTargets.All;
+
+        [Header("Mesh Bake")]
+        [Tooltip("Flatten the '<prefix>_<n>_ModelBase' prefab's model hierarchy into one baked mesh. " +
+                 "In RotateBase mode the axis variants inherit it, so this is the one to use there.")]
+        public bool bakeBaseMesh;
+
+        [Tooltip("Flatten the size prefabs themselves - the uniform 1x1 and each axis prefab. " +
+                 "Skipped with a warning for axis prefabs that are variants of a base, since a variant " +
+                 "cannot delete the hierarchy it inherits.")]
+        public bool bakeSizeMesh;
+
+        /// <summary>True when a build run should write <paramref name="target"/>.</summary>
+        public bool Builds(BuildTargets target) => (buildTargets & target) != 0;
+
         public BreakTargetSlot breakSlot = BreakTargetSlot.Shatter;
         public int maxMagnitude = 5;
 

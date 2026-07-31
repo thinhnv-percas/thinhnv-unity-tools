@@ -23,6 +23,23 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     }
 
     /// <summary>
+    /// What a build run is allowed to write. Anything switched off keeps whatever the previous build
+    /// cached on the row, so a narrowed run (shatter only, materials only) still feeds the definition the
+    /// prefabs and materials it already had.
+    /// </summary>
+    [Flags]
+    public enum BuildTargets
+    {
+        None = 0,
+        Materials = 1 << 0,
+        BreakPieces = 1 << 1,
+        Models = 1 << 2,
+        Definition = 1 << 3,
+
+        All = Materials | BreakPieces | Models | Definition,
+    }
+
+    /// <summary>
     /// How the three axis variants of a stretched model prefab are produced.
     ///
     /// This matters because the level data carries no orientation - every object's "rotation" is zero
