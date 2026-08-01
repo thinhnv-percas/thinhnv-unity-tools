@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -10,6 +11,39 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     /// </summary>
     public static partial class MeshBakeFactory
     {
+        /// <summary>
+        /// The combined mesh of <paramref name="prefabAsset"/> **without writing anything to it** - the
+        /// contents are loaded, merged and unloaded unsaved. Lets Mesh Per Axis take the base's geometry
+        /// while leaving the base prefab exactly as authored.
+        ///
+        /// The result is a scratch mesh, not an asset: the caller owns it and should destroy it.
+        /// </summary>
+        public static Mesh CombineFrom(ObjectDefBuildEntry entry, GameObject prefabAsset)
+        {
+            if (prefabAsset == null)
+            {
+                return null;
+            }
+
+            string path = AssetDatabase.GetAssetPath(prefabAsset);
+            if (string.IsNullOrEmpty(path))
+            {
+                return null;
+            }
+
+            GameObject contents = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                Transform content = ContentRoot(entry, contents.transform);
+                return TryCombine(content, out Mesh combined, out _) ? combined : null;
+            }
+            finally
+            {
+                // Unloaded without SaveAsPrefabAsset, so the base prefab is untouched.
+                PrefabUtility.UnloadPrefabContents(contents);
+            }
+        }
+
         /// <summary>
         /// Merge every mesh under <paramref name="content"/> into a single mesh expressed in that node's
         /// local space. <paramref name="materials"/> comes back ordered to match the result's sub-meshes.

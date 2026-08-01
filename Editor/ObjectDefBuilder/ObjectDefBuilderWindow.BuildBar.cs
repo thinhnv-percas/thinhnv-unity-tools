@@ -27,12 +27,26 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             DrawBuildTargets(entry);
 
             bool nothingSelected = entry.buildTargets == BuildTargets.None;
-            using (new EditorGUI.DisabledScope(
-                string.IsNullOrWhiteSpace(entry.modelPrefix) || nothingSelected))
+            using (new EditorGUILayout.HorizontalScope())
             {
-                if (GUILayout.Button(BuildButtonLabel(entry), GUILayout.Height(32)))
+                using (new EditorGUI.DisabledScope(
+                    string.IsNullOrWhiteSpace(entry.modelPrefix) || nothingSelected))
                 {
-                    RequestBuild(entry);
+                    if (GUILayout.Button(BuildButtonLabel(entry), GUILayout.Height(32)))
+                    {
+                        RequestBuild(entry);
+                    }
+                }
+
+                using (new EditorGUI.DisabledScope(!HasAnyBakeTarget(entry)))
+                {
+                    var bake = new GUIContent("Bake Meshes",
+                        "Flatten every already-built object prefab of this entry. Runs off the cached " +
+                        "prefabs, so no rebuild is needed.");
+                    if (GUILayout.Button(bake, GUILayout.Height(32), GUILayout.Width(110)))
+                    {
+                        RequestBake(entry);
+                    }
                 }
             }
 
@@ -137,6 +151,20 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             {
                 entry.buildTargets &= ~target;
             }
+        }
+
+        /// <summary>True when any size has object prefabs from a previous build for the Bake buttons to act on.</summary>
+        private static bool HasAnyBakeTarget(ObjectDefBuildEntry entry)
+        {
+            foreach (ObjectDefBuildRow row in entry.rows)
+            {
+                if (row.include && row.HasBakeTarget)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static string BuildButtonLabel(ObjectDefBuildEntry entry) =>

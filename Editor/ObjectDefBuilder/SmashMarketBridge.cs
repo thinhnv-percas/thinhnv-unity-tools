@@ -97,6 +97,16 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         }
 
         /// <summary>
+        /// The <c>ObjectType</c> name behind a raw value, for reading a definition back. Empty when the
+        /// value is not a defined member.
+        /// </summary>
+        public static string ObjectTypeName(int value)
+        {
+            Type type = ObjectTypeEnum;
+            return type == null ? string.Empty : Enum.GetName(type, value) ?? string.Empty;
+        }
+
+        /// <summary>
         /// Raw <c>SizeAxis</c> value for an axis. Mirrors the game enum (None 0, X 1, Y 2, Z 3);
         /// <see cref="VerifySizeAxisMirror"/> asserts the mirror still holds.
         /// </summary>

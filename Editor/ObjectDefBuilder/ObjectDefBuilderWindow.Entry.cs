@@ -49,6 +49,18 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             }
 
             entry.definitionFolder = EditorGUILayout.TextField("Definition Folder", entry.definitionFolder);
+
+            using (new EditorGUI.DisabledScope(entry.definition == null))
+            {
+                var fill = new GUIContent("Fill Cache From Definition",
+                    "Copy the definition's model and shatter prefabs back into this entry's size rows, so " +
+                    "the tool can bake, select and partially rebuild prefabs it did not create. " +
+                    "Source models and textures are not stored in a definition and are left alone.");
+                if (GUILayout.Button(fill))
+                {
+                    FillFromDefinition(entry);
+                }
+            }
         }
 
         /// <summary>Popup over the game's ObjectType enum names, with an explicit "(none)" entry.</summary>

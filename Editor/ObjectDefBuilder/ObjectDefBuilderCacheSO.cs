@@ -111,6 +111,12 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                  "cannot delete the hierarchy it inherits.")]
         public bool bakeSizeMesh;
 
+        [Tooltip("Give each axis variant its own baked mesh with the axis rotation baked into the " +
+                 "vertices, instead of all three sharing the base's mesh and rotating their wrapper. " +
+                 "The variant stays a variant - it just overrides the mesh reference and drops the " +
+                 "wrapper rotation. Needs Bake Base Mesh, and only applies in RotateBase mode.")]
+        public bool bakeMeshPerAxis;
+
         /// <summary>True when a build run should write <paramref name="target"/>.</summary>
         public bool Builds(BuildTargets target) => (buildTargets & target) != 0;
 

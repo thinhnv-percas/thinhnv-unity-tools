@@ -81,7 +81,14 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     "Flatten the uniform 1x1 prefab and each axis prefab that is not a variant."),
                 entry.bakeSizeMesh);
 
-            if (!entry.bakeBaseMesh && !entry.bakeSizeMesh)
+            entry.bakeMeshPerAxis = EditorGUILayout.Toggle(
+                new GUIContent("Mesh Per Axis",
+                    "Give each axis variant its own mesh with the rotation baked into the vertices, " +
+                    "instead of all three sharing the base's mesh and rotating their wrapper. " +
+                    "With Bake Base Mesh off, the base prefab is only read - never modified."),
+                entry.bakeMeshPerAxis);
+
+            if (!entry.bakeBaseMesh && !entry.bakeSizeMesh && !entry.bakeMeshPerAxis)
             {
                 return;
             }
@@ -90,6 +97,20 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             {
                 EditorGUILayout.LabelField(" ", $"meshes -> {MeshBakeFactory.MeshFolder(entry)}",
                     EditorStyles.miniLabel);
+            }
+
+            if (entry.bakeMeshPerAxis)
+            {
+                EditorGUILayout.HelpBox(
+                    entry.bakeBaseMesh
+                        ? "Each axis variant gets '<prefix>_<n><axis>_Baked' with the rotation in its " +
+                          "vertices, and the base is flattened too. Applies to RotateBase mode; the other " +
+                          "modes already write one prefab (and one mesh) per axis."
+                        : "Base prefab left untouched: it is only read for its geometry. Each axis variant " +
+                          "gets its own baked mesh, overriding the mesh on the first mesh node and " +
+                          "disabling the other renderers - a variant cannot delete inherited nodes, so its " +
+                          "hierarchy stays as the base authored it.",
+                    MessageType.None);
             }
 
             if (entry.bakeSizeMesh && entry.modelVariantMode == ModelVariantMode.RotateBase)

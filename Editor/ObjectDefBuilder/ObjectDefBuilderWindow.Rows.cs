@@ -78,6 +78,18 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                             RequestBuild(entry, row.magnitude);
                         }
                     }
+
+                    using (new EditorGUI.DisabledScope(!row.HasBakeTarget))
+                    {
+                        var bake = new GUIContent("Bake",
+                            "Flatten this size's already-built prefabs into baked meshes. Works off the " +
+                            "cached prefabs, so it does not need a rebuild. Variants are skipped - their " +
+                            "base is baked instead.");
+                        if (GUILayout.Button(bake, GUILayout.Width(46)))
+                        {
+                            RequestBake(entry, row.magnitude);
+                        }
+                    }
                 }
 
                 using (new EditorGUI.DisabledScope(!row.include))

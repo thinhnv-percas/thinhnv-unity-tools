@@ -5,8 +5,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 {
     /// <summary>
     /// Flattens an object prefab's model hierarchy into one baked mesh asset: the nested FBX nodes are
-    /// replaced by a single MeshFilter + MeshRenderer on the content root (the wrapper, or the prefab root
-    /// when there is none).
+    /// replaced by a single child of the content root (the wrapper, or the prefab root when there is none)
+    /// carrying one MeshFilter + MeshRenderer.
     ///
     /// Worth doing because an unpacked FBX brings its whole node chain along - the shipped
     /// Ice_Cylinder.prefab is five levels deep to reach one mesh - and every one of those transforms is
@@ -21,21 +21,21 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         public static string MeshFolder(ObjectDefBuildEntry entry) => $"{entry.prefabFolder}/Mesh";
 
         /// <summary>
-        /// Bake <paramref name="prefabAsset"/> in place. Returns false (with a warning) when the prefab is
-        /// a variant - a variant inherits its model hierarchy from the base and cannot delete it, so the
-        /// base is the thing to bake.
+        /// Bake <paramref name="prefabAsset"/> in place and return the mesh asset it now uses. Returns null
+        /// (with a warning) when the prefab is a variant - a variant inherits its model hierarchy from the
+        /// base and cannot delete it, so the base is the thing to bake.
         /// </summary>
-        public static bool Bake(ObjectDefBuildEntry entry, GameObject prefabAsset)
+        public static Mesh Bake(ObjectDefBuildEntry entry, GameObject prefabAsset)
         {
             if (prefabAsset == null)
             {
-                return false;
+                return null;
             }
 
             string path = AssetDatabase.GetAssetPath(prefabAsset);
             if (string.IsNullOrEmpty(path))
             {
-                return false;
+                return null;
             }
 
             if (PrefabUtility.GetCorrespondingObjectFromSource(prefabAsset) != null)
@@ -43,7 +43,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 Debug.LogWarning($"[ObjectDefBuilder] '{prefabAsset.name}' is a prefab variant: its model " +
                                  "hierarchy is inherited and cannot be replaced. Turn on Bake Base Mesh " +
                                  "instead - the variants pick the baked mesh up from the base.", prefabAsset);
-                return false;
+                return null;
             }
 
             GameObject contents = PrefabUtility.LoadPrefabContents(path);
@@ -54,13 +54,13 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 {
                     Debug.LogWarning($"[ObjectDefBuilder] '{prefabAsset.name}' has no meshes to bake.",
                         prefabAsset);
-                    return false;
+                    return null;
                 }
 
                 Mesh saved = SaveMesh(entry, combined, $"{prefabAsset.name}_Baked");
                 ReplaceHierarchy(content, saved, materials);
                 PrefabUtility.SaveAsPrefabAsset(contents, path);
-                return true;
+                return saved;
             }
             finally
             {
@@ -101,33 +101,78 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             return existing;
         }
 
+        private const string DefaultModelChildName = "Model";
+
+        /// <summary>What the prefab's convex MeshCollider looked like before the hierarchy was replaced.</summary>
+        private struct ColliderInfo
+        {
+            public bool exists;
+            public bool convex;
+            public bool onContent;
+            public PhysicsMaterial material;
+        }
+
         /// <summary>
-        /// Drop the model hierarchy and put the baked mesh straight on the content root, keeping whatever
-        /// components (collider, and on a wrapper-less prefab the Rigidbody / ObjectElement) already live there.
+        /// Drop the model hierarchy and rebuild it as a single child of the content root carrying the baked
+        /// mesh. The renderer goes on that child rather than on the content root itself, so a wrapper stays
+        /// what it is - the collider holder - with the visuals underneath it, matching the shipped prefabs.
         /// </summary>
         private static void ReplaceHierarchy(Transform content, Mesh mesh, Material[] materials)
         {
+            ColliderInfo collider = CaptureCollider(content);
+            string childName = content.childCount > 0 ? content.GetChild(0).name : DefaultModelChildName;
+
             for (int i = content.childCount - 1; i >= 0; i--)
             {
                 Object.DestroyImmediate(content.GetChild(i).gameObject);
             }
 
-            if (!content.TryGetComponent(out MeshFilter filter))
+            var model = new GameObject(childName);
+            model.transform.SetParent(content, false);
+            model.layer = content.gameObject.layer;
+            model.AddComponent<MeshFilter>().sharedMesh = mesh;
+            model.AddComponent<MeshRenderer>().sharedMaterials = materials;
+
+            RestoreCollider(content, collider, mesh);
+        }
+
+        /// <summary>
+        /// Note the convex MeshCollider wherever it sits. Without a wrapper it lives on the mesh's own node,
+        /// which the bake is about to delete - so it has to be re-created rather than just repointed.
+        /// </summary>
+        private static ColliderInfo CaptureCollider(Transform content)
+        {
+            MeshCollider existing = content.GetComponentInChildren<MeshCollider>(true);
+            if (existing == null)
             {
-                filter = content.gameObject.AddComponent<MeshFilter>();
+                return default;
             }
 
-            filter.sharedMesh = mesh;
-
-            if (!content.TryGetComponent(out MeshRenderer renderer))
+            return new ColliderInfo
             {
-                renderer = content.gameObject.AddComponent<MeshRenderer>();
+                exists = true,
+                convex = existing.convex,
+                onContent = existing.gameObject == content.gameObject,
+                material = existing.sharedMaterial,
+            };
+        }
+
+        /// <summary>Put the collider back on the content root, pointed at the baked whole.</summary>
+        private static void RestoreCollider(Transform content, ColliderInfo info, Mesh mesh)
+        {
+            if (!info.exists)
+            {
+                return;
             }
 
-            renderer.sharedMaterials = materials;
+            if (!content.TryGetComponent(out MeshCollider collider))
+            {
+                collider = content.gameObject.AddComponent<MeshCollider>();
+                collider.sharedMaterial = info.material;
+            }
 
-            // The convex hull was built from one source mesh; point it at the baked whole instead.
-            if (content.TryGetComponent(out MeshCollider collider) && collider.convex)
+            collider.convex = info.convex;
+            if (info.convex)
             {
                 collider.sharedMesh = mesh;
             }

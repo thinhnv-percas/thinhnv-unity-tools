@@ -25,7 +25,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         /// Returns the existing asset untouched when <paramref name="overwrite"/> is false.
         /// </summary>
         public static GameObject CreateOrRefresh(GameObject basePrefab, string folder, string prefabName,
-            BuildAxis axis, bool overwrite)
+            BuildAxis axis, bool overwrite, Quaternion? rotation = null)
         {
             if (basePrefab == null)
             {
@@ -34,23 +34,25 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             ToolAssetUtil.EnsureFolder(folder);
             string path = $"{folder}/{prefabName}.prefab";
+            Quaternion applied = rotation ?? axis.Rotation();
 
             var existing = AssetDatabase.LoadAssetAtPath<GameObject>(path);
             if (existing == null)
             {
-                return Create(basePrefab, path, prefabName, axis);
+                return Create(basePrefab, path, prefabName, applied);
             }
 
-            return overwrite ? Refresh(basePrefab, path, prefabName, axis) : existing;
+            return overwrite ? Refresh(basePrefab, path, prefabName, applied) : existing;
         }
 
-        private static GameObject Create(GameObject basePrefab, string path, string prefabName, BuildAxis axis)
+        private static GameObject Create(GameObject basePrefab, string path, string prefabName,
+            Quaternion rotation)
         {
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(basePrefab);
             try
             {
                 instance.name = prefabName;
-                ApplyAxis(basePrefab.transform, instance.transform, axis);
+                ApplyAxis(basePrefab.transform, instance.transform, rotation);
                 return PrefabUtility.SaveAsPrefabAsset(instance, path);
             }
             finally
@@ -63,7 +65,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         /// Rewrite the child overrides of an existing variant in place, keeping its asset (and therefore
         /// every reference to it) rather than replacing it with a freshly instantiated one.
         /// </summary>
-        private static GameObject Refresh(GameObject basePrefab, string path, string prefabName, BuildAxis axis)
+        private static GameObject Refresh(GameObject basePrefab, string path, string prefabName,
+            Quaternion rotation)
         {
             GameObject contents = PrefabUtility.LoadPrefabContents(path);
             try
@@ -77,7 +80,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 }
 
                 contents.name = prefabName;
-                ApplyAxis(basePrefab.transform, contents.transform, axis);
+                ApplyAxis(basePrefab.transform, contents.transform, rotation);
                 PrefabUtility.SaveAsPrefabAsset(contents, path);
             }
             finally
@@ -90,12 +93,11 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
         /// <summary>
         /// Set every direct child of <paramref name="variantRoot"/> to its counterpart in
-        /// <paramref name="baseRoot"/> rotated into <paramref name="axis"/>. Children are matched by index,
+        /// <paramref name="baseRoot"/> turned by <paramref name="rotation"/>. Children are matched by index,
         /// which holds because the variant is derived from the base.
         /// </summary>
-        private static void ApplyAxis(Transform baseRoot, Transform variantRoot, BuildAxis axis)
+        private static void ApplyAxis(Transform baseRoot, Transform variantRoot, Quaternion rotation)
         {
-            Quaternion rotation = axis.Rotation();
             int count = Mathf.Min(baseRoot.childCount, variantRoot.childCount);
 
             if (baseRoot.childCount != variantRoot.childCount)

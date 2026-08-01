@@ -94,6 +94,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 anyRotated |= row.PerAxisModelSource(axis) == null;
             }
 
+            Mesh baseMesh = null;
+            bool scratchMesh = false;
             if (anyRotated)
             {
                 result.basePrefab = Build(entry, row.modelSource, material,
@@ -102,7 +104,13 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 // Bake before the variants exist, so they derive from the already-flattened base.
                 if (entry.bakeBaseMesh)
                 {
-                    MeshBakeFactory.Bake(entry, result.basePrefab);
+                    baseMesh = MeshBakeFactory.Bake(entry, result.basePrefab);
+                }
+                else if (entry.bakeMeshPerAxis)
+                {
+                    // Per-axis without baking the base: read its geometry, leave the asset alone.
+                    baseMesh = MeshBakeFactory.CombineFrom(entry, result.basePrefab);
+                    scratchMesh = baseMesh != null;
                 }
             }
 
@@ -116,8 +124,20 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     continue;
                 }
 
-                // A variant inherits the base hierarchy, so it is baked via the base, never on its own.
-                result.SetAxis(axis, Variant(entry, result.basePrefab, magnitude, axis));
+                // A variant inherits the base hierarchy, so it is baked via the base, never on its own -
+                // per-axis baking only overrides the mesh reference and drops the wrapper rotation.
+                GameObject variant = Variant(entry, row, result.basePrefab, magnitude, axis);
+                if (entry.bakeMeshPerAxis && baseMesh != null)
+                {
+                    MeshBakeFactory.BakeAxis(entry, row, variant, baseMesh, axis);
+                }
+
+                result.SetAxis(axis, variant);
+            }
+
+            if (scratchMesh)
+            {
+                Object.DestroyImmediate(baseMesh);
             }
         }
 
@@ -130,43 +150,20 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             }
         }
 
-        private static GameObject Variant(ObjectDefBuildEntry entry, GameObject basePrefab,
-            int magnitude, BuildAxis axis)
+        /// <summary>
+        /// The axis variant, re-applying the row's captured angle when it has one. Without that a rebuild
+        /// would reset a hand-tweaked rotation back to the canonical axis value - and with Mesh Per Axis on
+        /// it would also stack that reset on top of a mesh already holding the tweak.
+        /// </summary>
+        private static GameObject Variant(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            GameObject basePrefab, int magnitude, BuildAxis axis)
         {
+            Quaternion? authored = row.HasBakedRotation(axis)
+                ? row.BakedRotationFor(axis)
+                : (Quaternion?)null;
+
             return AxisVariantFactory.CreateOrRefresh(basePrefab, entry.prefabFolder,
-                ObjectDefNaming.ModelPrefab(entry, magnitude, axis), axis, entry.overwritePrefabs);
-        }
-
-        /// <summary>Three independent prefabs, each from its own axis model slot.</summary>
-        private static void BuildSeparate(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            Material material, int magnitude, ref ModelBuildResult result)
-        {
-            foreach (BuildAxis axis in BuildAxisExtensions.All)
-            {
-                GameObject prefab = BuildAxisModel(entry, row, material, magnitude, axis);
-                BakeSize(entry, prefab);
-                result.SetAxis(axis, prefab);
-            }
-        }
-
-        private static GameObject BuildAxisModel(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            Material material, int magnitude, BuildAxis axis)
-        {
-            return Build(entry, row.ModelSourceFor(axis), material,
-                entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, magnitude, axis));
-        }
-
-        /// <summary>One prefab for the whole magnitude, wired into all three axis rows.</summary>
-        private static void BuildShared(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            Material material, int magnitude, ref ModelBuildResult result)
-        {
-            GameObject shared = Build(entry, row.modelSource, material,
-                entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, magnitude, BuildAxis.X));
-            BakeSize(entry, shared);
-
-            result.axisX = shared;
-            result.axisY = shared;
-            result.axisZ = shared;
+                ObjectDefNaming.ModelPrefab(entry, magnitude, axis), axis, entry.overwritePrefabs, authored);
         }
     }
 }
