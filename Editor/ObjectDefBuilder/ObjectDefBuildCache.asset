@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp-Editor::Thinhnv.UnityTools.ObjectDefBuilder.ObjectDefBuilderCacheSO
   entries:
   - label: Cube A
-    definition: {fileID: 11400000, guid: 9b5b2f0248848254fa59995ca1d80587, type: 2}
-    objectTypeName: BoxSquareA
+    definition: {fileID: 11400000, guid: 2873d7e0b461cb44494043c6bcd77514, type: 2}
+    objectTypeName: 
     definitionFolder: Assets/@SmashMarket/Data/Object
-    modelPrefix: Cube_A
-    breakPrefix: Cube_A
-    prefabFolder: Assets/@SmashMarket/3D Models/Box/GameObject
-    materialFolder: Assets/@SmashMarket/3D Models/Box/Material
+    modelPrefix: Pig Pinata
+    breakPrefix: Pig Pinata
+    prefabFolder: Assets/@SmashMarket/3D Models/Pignata/GameObject
+    materialFolder: Assets/@SmashMarket/3D Models/Pignata/Material
     sourceFolder: Assets/@SmashMarket/3D Models/Box
     modelMaterial:
       template: {fileID: 2100000, guid: 1ee7e66dc68d79d4c9ac919611d43fb4, type: 2}
@@ -163,6 +163,224 @@ MonoBehaviour:
       breakPieceX: {fileID: 1818351530874208591, guid: 044b918a627d02d49b593762bb1e5c0c, type: 3}
       breakPieceY: {fileID: 6548171405993174133, guid: 5289f4ca1dfcb0d45aa4feb747f8bd9f, type: 3}
       breakPieceZ: {fileID: 5746034290206652774, guid: 61eaf9b6616db774ea05469d9cad3e67, type: 3}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+  - label: Cube A Copy
+    definition: {fileID: 11400000, guid: 2873d7e0b461cb44494043c6bcd77514, type: 2}
+    objectTypeName: 
+    definitionFolder: Assets/@SmashMarket/Data/Object
+    modelPrefix: Gate
+    breakPrefix: Gate
+    prefabFolder: Assets/@SmashMarket/3D Models/Gate/GameObject
+    materialFolder: Assets/@SmashMarket/3D Models/Gate/Material
+    sourceFolder: Assets/@SmashMarket/3D Models/Box
+    modelMaterial:
+      template: {fileID: 2100000, guid: 1ee7e66dc68d79d4c9ac919611d43fb4, type: 2}
+      shader: {fileID: 4800000, guid: e5ff214194c4275439c1c060a23ceb0b, type: 3}
+      textureProperty: _BaseMap
+    pieceMaterial:
+      template: {fileID: 2100000, guid: 7c6fc6afd01da7d42b0380db0e9d0e00, type: 2}
+      shader: {fileID: 4800000, guid: be273d8a0d3f1bb4389be0600e72d2a1, type: 3}
+      textureProperty: _MainTexture
+    objectPhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    piecePhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    objectColliderMode: 2
+    pieceColliderMode: 1
+    roundObjectColliderSize: 1
+    roundPieceColliderSize: 0
+    objectMass: 1
+    pieceMass: 0.1
+    objectTag: Object
+    objectLayer: 6
+    pieceLayer: 9
+    modelRotation: {x: 0, y: 180, z: 0}
+    breakRotation: {x: 0, y: 180, z: 0}
+    useWrapper: 1
+    usePieceWrapper: 1
+    wrapperName: Wrapper
+    unpackModel: 1
+    modelVariantMode: 0
+    overwritePrefabs: 1
+    buildTargets: 4
+    bakeBaseMesh: 0
+    bakeSizeMesh: 0
+    bakeMeshPerAxis: 0
+    breakSlot: 0
+    maxMagnitude: 5
+    rows:
+    - magnitude: 1
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 9b956b0b716b8b54eb8e97e19da65c2a, type: 3}
+      breakSource: {fileID: 0}
+      modelTexture: {fileID: 2800000, guid: 44d46dc31a0a1d749980e42afb6e72f2, type: 3}
+      pieceTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 7900d3d6a727ff84e82e1cf262b8dbc2, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: e873d5ab9b1221d4c87a98dd14751778, type: 2}
+      modelBasePrefab: {fileID: 0}
+      modelPrefabX: {fileID: 7250070170616191762, guid: 3a2acc03add67544f88cd5ad55589d26, type: 3}
+      modelPrefabY: {fileID: 0}
+      modelPrefabZ: {fileID: 0}
+      breakBasePrefab: {fileID: 0}
+      breakPieceX: {fileID: 2327701817219404116, guid: e6b08a1e8659afa4b85d5446443a77e9, type: 3}
+      breakPieceY: {fileID: 0}
+      breakPieceZ: {fileID: 0}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+    - magnitude: 2
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 9b956b0b716b8b54eb8e97e19da65c2a, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: c9676b2802e0bf04ab018c11a0568ed4, type: 3}
+      modelTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      pieceTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 20f9c22c5d5abbc45ba1d58fe8260cd2, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: bdd76bddb5f2c464b8dbb0ba66812065, type: 2}
+      modelBasePrefab: {fileID: 7155712778152992300, guid: dadfd359c7880fd4aa56a9cd946c8a2c, type: 3}
+      modelPrefabX: {fileID: 4982384588667812269, guid: bbf21befb430e374697deaf8182bc675, type: 3}
+      modelPrefabY: {fileID: 491385964830195964, guid: dbb0005cb88f3da49a9860385a34a109, type: 3}
+      modelPrefabZ: {fileID: 361472972851939620, guid: 3ffd4ce31ab7c2942942a3c973e69dd8, type: 3}
+      breakBasePrefab: {fileID: 802784948719064453, guid: 1c3aa4cd7996f0a42a9908c9b9b2cf0c, type: 3}
+      breakPieceX: {fileID: 8936352361131790523, guid: 0dede4ab5b9022c4aaadb0168f0a07f0, type: 3}
+      breakPieceY: {fileID: 3180544369238158456, guid: 4eb08189354f54d44b50cb468d673782, type: 3}
+      breakPieceZ: {fileID: 2840534185184807424, guid: a8c88fa89f7b90f41b88e22a05d600d0, type: 3}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+    - magnitude: 3
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: b60e96978248d814296b358b12be1e5a, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: dbbc3edc7c140d842a508ca3cbc4d4dd, type: 3}
+      modelTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      pieceTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: a4555b948fe9cc04dac0e3e56126ed98, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 2f0f24fa37634284ea0a3540d80e50ed, type: 2}
+      modelBasePrefab: {fileID: 8714200490570764320, guid: 43eee8d93afbdaf438af4b909cc36d2a, type: 3}
+      modelPrefabX: {fileID: 8898656013027896851, guid: 96acea0ca8508e149b8732433869351d, type: 3}
+      modelPrefabY: {fileID: 2606835035544411487, guid: 11e39d27a05809845a8c9a9e1331a9d6, type: 3}
+      modelPrefabZ: {fileID: 5808985360542843312, guid: 320ec312bd8b2374f9b907307c60701b, type: 3}
+      breakBasePrefab: {fileID: 2869926068649326081, guid: 290afaae002d39d488af184db6152ce1, type: 3}
+      breakPieceX: {fileID: 5689468627837940674, guid: fee6761d0e7e4944bbde97524b2b3bad, type: 3}
+      breakPieceY: {fileID: 1115365182332898887, guid: 8513a36abf2699f4489b00143d368a20, type: 3}
+      breakPieceZ: {fileID: 2805633283093599985, guid: d677f06a52b4dbf41a33289a50fb7ac2, type: 3}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+    - magnitude: 4
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 2f7b43fb3f457e448a99f4f43be2d81e, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: e02dde6067b7a2d4f8484e9bb0fe0c87, type: 3}
+      modelTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      pieceTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 31a0be3dca250d34b9df457753bbd292, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 736954dec66ad1a4282428440fc39a4b, type: 2}
+      modelBasePrefab: {fileID: 1715463480970841044, guid: 60d9cdf421c4c1c4aa437caba0e4e8fa, type: 3}
+      modelPrefabX: {fileID: 2551935522346255923, guid: 29f5786c4a9663e4b817de89f1d5513f, type: 3}
+      modelPrefabY: {fileID: 5255664707706341094, guid: 3bd214e7f4c4ace4cb0be5ec1c6a9546, type: 3}
+      modelPrefabZ: {fileID: 3014622336826128485, guid: 99d39403b582b2049b7b5c74f960cdd4, type: 3}
+      breakBasePrefab: {fileID: 7006468495194893440, guid: e8a08222d97733749b816b25798f219e, type: 3}
+      breakPieceX: {fileID: 2091702020921263750, guid: fee0b3aa3b0508b48917b77cfeb01669, type: 3}
+      breakPieceY: {fileID: 2665477561287519455, guid: cfe5b9a0ca8719b4c88537ead9780250, type: 3}
+      breakPieceZ: {fileID: 6346774099394233487, guid: 3d53fe11732e63e47b5d35234db135ad, type: 3}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+    - magnitude: 5
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: c8899ae65990ee8409b5befd28ee2386, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: 910ebeeffd77fcb4d97ad98f8beff6e5, type: 3}
+      modelTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      pieceTexture: {fileID: 2800000, guid: 74b53be62a0b36343b027c9e292d96f6, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 61df745f62c61e847a5bd2b679db93ce, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: 02650f6d49a2b2c4790c3ab8c6a89953, type: 2}
+      modelBasePrefab: {fileID: 1387270699651359936, guid: 9acbc20742210d644984ad88186aca55, type: 3}
+      modelPrefabX: {fileID: 378225829278855883, guid: afa84b0680b29ab45a1f43db31ba93f8, type: 3}
+      modelPrefabY: {fileID: 8807387257858386581, guid: 13577ce10eb997e489fc1722b5d25514, type: 3}
+      modelPrefabZ: {fileID: 3947000122525171504, guid: e732c921eb166c04e9fb3fea8a68f447, type: 3}
+      breakBasePrefab: {fileID: 8695713348674854235, guid: 203ca4c441bc40b47ba5d879bc37333f, type: 3}
+      breakPieceX: {fileID: 1818351530874208591, guid: 044b918a627d02d49b593762bb1e5c0c, type: 3}
+      breakPieceY: {fileID: 6548171405993174133, guid: 5289f4ca1dfcb0d45aa4feb747f8bd9f, type: 3}
+      breakPieceZ: {fileID: 5746034290206652774, guid: 61eaf9b6616db774ea05469d9cad3e67, type: 3}
+      bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
+      bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
+  - label: Pignata
+    definition: {fileID: 11400000, guid: 2873d7e0b461cb44494043c6bcd77514, type: 2}
+    objectTypeName: Pignata
+    definitionFolder: Assets/@SmashMarket/Data/Object
+    modelPrefix: Pig Pinata
+    breakPrefix: Pig Pinata
+    prefabFolder: Assets/@SmashMarket/3D Models/Pig Pinata/GameObject
+    materialFolder: Assets/@SmashMarket/3D Models/Pig Pinata/Material
+    sourceFolder: Assets/@SmashMarket/3D Models/Pig Pinata
+    modelMaterial:
+      template: {fileID: 2100000, guid: 1ee7e66dc68d79d4c9ac919611d43fb4, type: 2}
+      shader: {fileID: 4800000, guid: e5ff214194c4275439c1c060a23ceb0b, type: 3}
+      textureProperty: _BaseMap
+    pieceMaterial:
+      template: {fileID: 2100000, guid: 7c6fc6afd01da7d42b0380db0e9d0e00, type: 2}
+      shader: {fileID: 4800000, guid: be273d8a0d3f1bb4389be0600e72d2a1, type: 3}
+      textureProperty: _MainTexture
+    objectPhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    piecePhysicMaterial: {fileID: 13400000, guid: bc9040065c28e6345b9c98feba650304, type: 2}
+    objectColliderMode: 2
+    pieceColliderMode: 1
+    roundObjectColliderSize: 1
+    roundPieceColliderSize: 0
+    objectMass: 1
+    pieceMass: 0.1
+    objectTag: Object
+    objectLayer: 6
+    pieceLayer: 9
+    modelRotation: {x: 0, y: 180, z: 0}
+    breakRotation: {x: 0, y: 180, z: 0}
+    useWrapper: 1
+    usePieceWrapper: 1
+    wrapperName: Wrapper
+    unpackModel: 1
+    modelVariantMode: 0
+    overwritePrefabs: 1
+    buildTargets: 15
+    bakeBaseMesh: 0
+    bakeSizeMesh: 0
+    bakeMeshPerAxis: 0
+    breakSlot: 0
+    maxMagnitude: 1
+    rows:
+    - magnitude: 1
+      include: 1
+      modelSource: {fileID: 919132149155446097, guid: 84d5d16f6fb86044897168dff1c66700, type: 3}
+      breakSource: {fileID: 919132149155446097, guid: 76e2d494daf690b4393f785a17ca70b6, type: 3}
+      modelTexture: {fileID: 2800000, guid: a4579db8815fba441a2cef8c69e3cbfb, type: 3}
+      pieceTexture: {fileID: 2800000, guid: a4579db8815fba441a2cef8c69e3cbfb, type: 3}
+      modelSourceX: {fileID: 0}
+      modelSourceY: {fileID: 0}
+      modelSourceZ: {fileID: 0}
+      modelMaterial: {fileID: 2100000, guid: 71f6a63ecc6b53549a59c1d6cd9e2eb8, type: 2}
+      pieceMaterial: {fileID: 2100000, guid: e635eb9bdf3671542a226584960e94aa, type: 2}
+      modelBasePrefab: {fileID: 0}
+      modelPrefabX: {fileID: 7412708284049142014, guid: f81dab575f717b343a0b50bb7146e0ac, type: 3}
+      modelPrefabY: {fileID: 0}
+      modelPrefabZ: {fileID: 0}
+      breakBasePrefab: {fileID: 0}
+      breakPieceX: {fileID: 4125666725804149564, guid: 255e26813e708b448924c415365dfeb8, type: 3}
+      breakPieceY: {fileID: 0}
+      breakPieceZ: {fileID: 0}
       bakedRotationX: {x: 0, y: 0, z: 0, w: 0}
       bakedRotationY: {x: 0, y: 0, z: 0, w: 0}
       bakedRotationZ: {x: 0, y: 0, z: 0, w: 0}
