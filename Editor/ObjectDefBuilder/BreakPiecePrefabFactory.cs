@@ -3,75 +3,124 @@ using UnityEngine;
 
 namespace Thinhnv.UnityTools.ObjectDefBuilder
 {
-    /// <summary>Prefabs produced for one size's shatter effect.</summary>
+    /// <summary>Prefabs produced for one size's shatter effect, across all axis families.</summary>
     public struct BreakBuildResult
     {
-        /// <summary>Shared base holding the pieces; null for the uniform 1x1x1 size.</summary>
-        public GameObject basePrefab;
+        public GameObject barBasePrefab;
+        public GameObject plateBasePrefab;
+        public GameObject cubeBasePrefab;
 
         /// <summary>The prefab for the uniform 1x1x1 size (no axis variants exist).</summary>
         public GameObject uniform;
 
-        public GameObject axisX;
-        public GameObject axisY;
-        public GameObject axisZ;
+        public GameObject axisX, axisY, axisZ;
+        public GameObject axisXY, axisYZ, axisXZ;
+        public GameObject axisXYZ;
+
+        public GameObject BasePrefab(BuildAxisFamily family) => family switch
+        {
+            BuildAxisFamily.Plate => plateBasePrefab,
+            BuildAxisFamily.Cube => cubeBasePrefab,
+            _ => barBasePrefab,
+        };
 
         public GameObject ForAxis(BuildAxis axis) => axis switch
         {
-            BuildAxis.X => axisX,
-            BuildAxis.Y => axisY,
-            BuildAxis.Z => axisZ,
+            BuildAxis.X => axisX, BuildAxis.Y => axisY, BuildAxis.Z => axisZ,
+            BuildAxis.XY => axisXY, BuildAxis.YZ => axisYZ, BuildAxis.XZ => axisXZ,
+            BuildAxis.XYZ => axisXYZ,
             _ => uniform,
         };
+
+        public void SetAxis(BuildAxis axis, GameObject prefab)
+        {
+            switch (axis)
+            {
+                case BuildAxis.X: axisX = prefab; break;
+                case BuildAxis.Y: axisY = prefab; break;
+                case BuildAxis.Z: axisZ = prefab; break;
+                case BuildAxis.XY: axisXY = prefab; break;
+                case BuildAxis.YZ: axisYZ = prefab; break;
+                case BuildAxis.XZ: axisXZ = prefab; break;
+                case BuildAxis.XYZ: axisXYZ = prefab; break;
+            }
+        }
     }
 
     /// <summary>
     /// Builds the shatter (<c>BreakPieceEffect</c>) prefabs for one object size out of a fractured model.
     ///
-    /// Structure written, matching the shipped *_BreakBase prefabs: root (BreakPieceEffect) -> one pivot
-    /// per piece carrying the piece's pose -> the piece itself at local identity with mesh, convex
-    /// MeshCollider and Rigidbody. The pose lives on the pivot so the Rigidbody's local pose stays
-    /// identity in every axis variant, which is what lets <c>BreakPieceEffect</c> restore its pieces
-    /// from a single set of cached local transforms.
-    ///
-    /// Sizes above 1x1 additionally get three prefab variants of that base, one per stretched axis.
+    /// Each family (Bar/Plate/Cube) produces its own base + axis variants from the family's break
+    /// source. Families whose break source is null are skipped.
     /// </summary>
     public static partial class BreakPiecePrefabFactory
     {
+        private static readonly BuildAxisFamily[] AllFamilies =
+            { BuildAxisFamily.Bar, BuildAxisFamily.Plate, BuildAxisFamily.Cube };
+
         /// <summary>
-        /// Generate the shatter prefabs for <paramref name="magnitude"/>. Magnitude 1 yields a single
-        /// "<c>{prefix}_1x1_Break_Piece</c>"; larger sizes yield a "<c>Base/{prefix}_{n}_BreakBase</c>"
-        /// plus "<c>{prefix}_{n}x|y|z_Break_Piece</c>" variants of it.
+        /// Generate the shatter prefabs for <paramref name="magnitude"/> across all families that
+        /// have a break source on the row. Magnitude 1 yields a single uniform prefab.
         /// </summary>
-        public static BreakBuildResult Build(ObjectDefBuildEntry entry, GameObject breakSource,
+        public static BreakBuildResult Build(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
             Material pieceMaterial, int magnitude)
         {
             var result = new BreakBuildResult();
-            if (breakSource == null || SmashMarketBridge.BreakPieceEffectType == null)
+            if (SmashMarketBridge.BreakPieceEffectType == null)
             {
                 return result;
             }
-
-            string folder = entry.prefabFolder;
 
             if (magnitude <= 1)
             {
-                result.uniform = BuildBase(entry, breakSource, pieceMaterial, folder,
-                    ObjectDefNaming.BreakPiecePrefab(entry, 1, BuildAxis.None));
+                GameObject breakSource = row.breakSource;
+                if (breakSource != null)
+                {
+                    result.uniform = BuildBase(entry, breakSource, pieceMaterial, entry.prefabFolder,
+                        ObjectDefNaming.BreakPiecePrefab(entry, 1, BuildAxis.None));
+                }
                 return result;
             }
 
-            result.basePrefab = BuildBase(entry, breakSource, pieceMaterial,
-                ObjectDefNaming.BaseFolder(entry), ObjectDefNaming.BreakBasePrefab(entry, magnitude));
-            if (result.basePrefab == null)
+            foreach (BuildAxisFamily family in AllFamilies)
             {
-                return result;
+                GameObject breakSource = row.FamilyBreakSource(family);
+                if (breakSource == null)
+                {
+                    continue;
+                }
+
+                BuildFamily(entry, row, breakSource, pieceMaterial, magnitude, family, ref result);
             }
 
-            result.axisX = BuildVariant(entry, result.basePrefab, magnitude, BuildAxis.X);
-            result.axisY = BuildVariant(entry, result.basePrefab, magnitude, BuildAxis.Y);
-            result.axisZ = BuildVariant(entry, result.basePrefab, magnitude, BuildAxis.Z);
             return result;
+        }
+
+        private static void BuildFamily(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            GameObject breakSource, Material pieceMaterial, int magnitude,
+            BuildAxisFamily family, ref BreakBuildResult result)
+        {
+            BuildAxis[] axes = BuildAxisExtensions.FamilyAxes(family);
+            string baseFolder = ObjectDefNaming.BaseFolder(entry);
+
+            GameObject basePrefab = BuildBase(entry, breakSource, pieceMaterial, baseFolder,
+                ObjectDefNaming.BreakBasePrefab(entry, magnitude, family));
+            if (basePrefab == null)
+            {
+                return;
+            }
+
+            switch (family)
+            {
+                case BuildAxisFamily.Bar: result.barBasePrefab = basePrefab; break;
+                case BuildAxisFamily.Plate: result.plateBasePrefab = basePrefab; break;
+                case BuildAxisFamily.Cube: result.cubeBasePrefab = basePrefab; break;
+            }
+
+            foreach (BuildAxis axis in axes)
+            {
+                result.SetAxis(axis, BuildVariant(entry, basePrefab, magnitude, axis));
+            }
         }
 
         private static GameObject BuildVariant(ObjectDefBuildEntry entry, GameObject basePrefab,

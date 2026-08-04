@@ -82,10 +82,19 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             for (int i = 0; i < variants.arraySize; i++)
             {
                 SerializedProperty element = variants.GetArrayElementAtIndex(i);
+                int axisValue = element
+                    .FindPropertyRelative(SmashMarketBridge.PropVariantAxis).intValue;
+
+                if (!BuildAxisExtensions.IsDefined(axisValue))
+                {
+                    Debug.LogWarning($"[ObjectDefBuilder] '{definition.name}' variant {i} has " +
+                                     $"unknown axis value {axisValue}; skipped.", definition);
+                    continue;
+                }
+
                 read.variants.Add(new DefinitionVariantRead
                 {
-                    axis = (BuildAxis)element
-                        .FindPropertyRelative(SmashMarketBridge.PropVariantAxis).intValue,
+                    axis = (BuildAxis)axisValue,
                     magnitude = element
                         .FindPropertyRelative(SmashMarketBridge.PropVariantMagnitude).intValue,
                     model = Relative(element, SmashMarketBridge.PropVariantModel),

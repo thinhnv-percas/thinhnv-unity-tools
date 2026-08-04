@@ -2,24 +2,43 @@ using UnityEngine;
 
 namespace Thinhnv.UnityTools.ObjectDefBuilder
 {
-    /// <summary>Object prefabs produced for one size.</summary>
+    /// <summary>Object prefabs produced for one size, across all axis families.</summary>
     public struct ModelBuildResult
     {
-        /// <summary>Shared base the axis variants derive from; only set in <see cref="ModelVariantMode.RotateBase"/>.</summary>
-        public GameObject basePrefab;
+        /// <summary>Per-family base the axis variants derive from (RotateBase mode only).</summary>
+        public GameObject barBasePrefab;
+        public GameObject plateBasePrefab;
+        public GameObject cubeBasePrefab;
 
         /// <summary>The prefab for the uniform 1x1x1 size (no axis variants exist).</summary>
         public GameObject uniform;
 
-        public GameObject axisX;
-        public GameObject axisY;
-        public GameObject axisZ;
+        public GameObject axisX, axisY, axisZ;
+        public GameObject axisXY, axisYZ, axisXZ;
+        public GameObject axisXYZ;
+
+        public GameObject BasePrefab(BuildAxisFamily family) => family switch
+        {
+            BuildAxisFamily.Plate => plateBasePrefab,
+            BuildAxisFamily.Cube => cubeBasePrefab,
+            _ => barBasePrefab,
+        };
+
+        public void SetBasePrefab(BuildAxisFamily family, GameObject prefab)
+        {
+            switch (family)
+            {
+                case BuildAxisFamily.Plate: plateBasePrefab = prefab; break;
+                case BuildAxisFamily.Cube: cubeBasePrefab = prefab; break;
+                default: barBasePrefab = prefab; break;
+            }
+        }
 
         public GameObject ForAxis(BuildAxis axis) => axis switch
         {
-            BuildAxis.X => axisX,
-            BuildAxis.Y => axisY,
-            BuildAxis.Z => axisZ,
+            BuildAxis.X => axisX, BuildAxis.Y => axisY, BuildAxis.Z => axisZ,
+            BuildAxis.XY => axisXY, BuildAxis.YZ => axisYZ, BuildAxis.XZ => axisXZ,
+            BuildAxis.XYZ => axisXYZ,
             _ => uniform,
         };
 
@@ -30,6 +49,10 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 case BuildAxis.X: axisX = prefab; break;
                 case BuildAxis.Y: axisY = prefab; break;
                 case BuildAxis.Z: axisZ = prefab; break;
+                case BuildAxis.XY: axisXY = prefab; break;
+                case BuildAxis.YZ: axisYZ = prefab; break;
+                case BuildAxis.XZ: axisXZ = prefab; break;
+                case BuildAxis.XYZ: axisXYZ = prefab; break;
                 default: uniform = prefab; break;
             }
         }
@@ -61,7 +84,10 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             switch (entry.modelVariantMode)
             {
                 case ModelVariantMode.RotateBase:
-                    BuildRotatedVariants(entry, row, material, magnitude, ref result);
+                    foreach (BuildAxisFamily family in FamiliesWithSource(row))
+                    {
+                        BuildRotatedFamily(entry, row, material, magnitude, family, ref result);
+                    }
                     break;
 
                 case ModelVariantMode.Shared:
@@ -76,20 +102,38 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             return result;
         }
 
-        /// <summary>
-        /// One base prefab, then a variant per axis with the model rotated onto it - except for any axis
-        /// that carries its own model, which is built straight from that model instead. That lets a size
-        /// mix the two: rotate the shared model where the rotation is right, and drop a purpose-built
-        /// model on the axes where it is not.
-        ///
-        /// The base is only written when at least one axis still needs it, so overriding all three does
-        /// not leave a stray *_ModelBase behind.
-        /// </summary>
-        private static void BuildRotatedVariants(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            Material material, int magnitude, ref ModelBuildResult result)
+        private static readonly BuildAxisFamily[] AllFamilies =
+            { BuildAxisFamily.Bar, BuildAxisFamily.Plate, BuildAxisFamily.Cube };
+
+        private static System.Collections.Generic.List<BuildAxisFamily> FamiliesWithSource(ObjectDefBuildRow row)
         {
+            var list = new System.Collections.Generic.List<BuildAxisFamily>(3);
+            foreach (BuildAxisFamily family in AllFamilies)
+            {
+                if (row.FamilyModelSource(family) != null)
+                {
+                    list.Add(family);
+                }
+            }
+            return list;
+        }
+
+        /// <summary>
+        /// Build one family's base prefab and its axis variants. Axes that carry their own model slot
+        /// are built from that model directly instead of rotating the base.
+        /// </summary>
+        private static void BuildRotatedFamily(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            Material material, int magnitude, BuildAxisFamily family, ref ModelBuildResult result)
+        {
+            BuildAxis[] axes = BuildAxisExtensions.FamilyAxes(family);
+            GameObject source = row.FamilyModelSource(family);
+            if (source == null)
+            {
+                return;
+            }
+
             bool anyRotated = false;
-            foreach (BuildAxis axis in BuildAxisExtensions.All)
+            foreach (BuildAxis axis in axes)
             {
                 anyRotated |= row.PerAxisModelSource(axis) == null;
             }
@@ -98,23 +142,23 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             bool scratchMesh = false;
             if (anyRotated)
             {
-                result.basePrefab = Build(entry, row.modelSource, material,
-                    ObjectDefNaming.BaseFolder(entry), ObjectDefNaming.ModelBasePrefab(entry, magnitude));
+                GameObject basePrefab = Build(entry, source, material,
+                    ObjectDefNaming.BaseFolder(entry),
+                    ObjectDefNaming.ModelBasePrefab(entry, magnitude, family));
+                result.SetBasePrefab(family, basePrefab);
 
-                // Bake before the variants exist, so they derive from the already-flattened base.
                 if (entry.bakeBaseMesh)
                 {
-                    baseMesh = MeshBakeFactory.Bake(entry, result.basePrefab);
+                    baseMesh = MeshBakeFactory.Bake(entry, basePrefab);
                 }
                 else if (entry.bakeMeshPerAxis)
                 {
-                    // Per-axis without baking the base: read its geometry, leave the asset alone.
-                    baseMesh = MeshBakeFactory.CombineFrom(entry, result.basePrefab);
+                    baseMesh = MeshBakeFactory.CombineFrom(entry, basePrefab);
                     scratchMesh = baseMesh != null;
                 }
             }
 
-            foreach (BuildAxis axis in BuildAxisExtensions.All)
+            foreach (BuildAxis axis in axes)
             {
                 if (row.PerAxisModelSource(axis) != null)
                 {
@@ -124,9 +168,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     continue;
                 }
 
-                // A variant inherits the base hierarchy, so it is baked via the base, never on its own -
-                // per-axis baking only overrides the mesh reference and drops the wrapper rotation.
-                GameObject variant = Variant(entry, row, result.basePrefab, magnitude, axis);
+                GameObject basePrefab = result.BasePrefab(family);
+                GameObject variant = Variant(entry, row, basePrefab, magnitude, axis);
                 if (entry.bakeMeshPerAxis && baseMesh != null)
                 {
                     MeshBakeFactory.BakeAxis(entry, row, variant, baseMesh, axis);

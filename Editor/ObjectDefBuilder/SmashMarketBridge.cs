@@ -107,14 +107,15 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         }
 
         /// <summary>
-        /// Raw <c>SizeAxis</c> value for an axis. Mirrors the game enum (None 0, X 1, Y 2, Z 3);
+        /// Raw <c>SizeAxis</c> value for an axis. Mirrors the game enum (None 0 .. XYZ 7);
         /// <see cref="VerifySizeAxisMirror"/> asserts the mirror still holds.
         /// </summary>
         public static int SizeAxisValue(BuildAxis axis) => (int)axis;
 
         /// <summary>
-        /// Log an error if the game's <c>SizeAxis</c> enum no longer matches <see cref="BuildAxis"/> -
-        /// the one place where this tool hard-codes game enum numbers.
+        /// Log an error if the game's <c>SizeAxis</c> enum no longer matches <see cref="BuildAxis"/>.
+        /// Checks both directions: every <see cref="BuildAxis"/> value exists in the game, and every
+        /// game value exists in <see cref="BuildAxis"/>.
         /// </summary>
         public static void VerifySizeAxisMirror()
         {
@@ -124,13 +125,28 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 return;
             }
 
-            foreach (BuildAxis axis in new[] { BuildAxis.X, BuildAxis.Y, BuildAxis.Z })
+            foreach (BuildAxis axis in BuildAxisExtensions.All)
             {
                 string name = axis.ToString();
                 if (!Enum.IsDefined(type, name) || Convert.ToInt32(Enum.Parse(type, name)) != (int)axis)
                 {
                     Debug.LogError($"[ObjectDefBuilder] SizeAxis.{name} no longer equals {(int)axis}; " +
                                    "update BuildAxis in the tool to match the game enum.");
+                }
+            }
+
+            foreach (string gameName in Enum.GetNames(type))
+            {
+                if (gameName == "None")
+                {
+                    continue;
+                }
+
+                if (!Enum.IsDefined(typeof(BuildAxis), gameName))
+                {
+                    int gameValue = Convert.ToInt32(Enum.Parse(type, gameName));
+                    Debug.LogError($"[ObjectDefBuilder] Game SizeAxis.{gameName}={gameValue} has no " +
+                                   "matching BuildAxis; add it to the tool's enum.");
                 }
             }
         }

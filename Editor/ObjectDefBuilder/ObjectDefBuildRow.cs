@@ -6,167 +6,124 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     /// <summary>
     /// One authored size of an object: the sources the user dragged in plus the assets the last build
     /// produced from them. <see cref="magnitude"/> 1 is the uniform 1x1x1 base, which has no axis variants.
+    ///
+    /// Per-family base sources: <see cref="modelSource"/>/<see cref="breakSource"/> are the Bar family
+    /// base; <see cref="plateModelSource"/>/<see cref="plateBreakSource"/> and
+    /// <see cref="cubeModelSource"/>/<see cref="cubeBreakSource"/> are the Plate/Cube family bases.
     /// </summary>
     [Serializable]
-    public class ObjectDefBuildRow
+    public partial class ObjectDefBuildRow
     {
         public int magnitude = 1;
         public bool include = true;
 
-        [Header("Sources (drag here)")]
+        [Header("Bar sources (drag here)")]
         public GameObject modelSource;
         public GameObject breakSource;
         public Texture2D modelTexture;
         public Texture2D pieceTexture;
 
+        [Header("Plate sources (dual-axis stretch)")]
+        public GameObject plateModelSource;
+        public GameObject plateBreakSource;
+
+        [Header("Cube sources (triple-axis stretch)")]
+        public GameObject cubeModelSource;
+        public GameObject cubeBreakSource;
+
         [Header("Per-axis models (ModelVariantMode.SeparateModels only)")]
         public GameObject modelSourceX;
         public GameObject modelSourceY;
         public GameObject modelSourceZ;
+        public GameObject modelSourceXY;
+        public GameObject modelSourceYZ;
+        public GameObject modelSourceXZ;
+        public GameObject modelSourceXYZ;
 
         [Header("Last build result (cache)")]
         public Material modelMaterial;
         public Material pieceMaterial;
         public GameObject modelBasePrefab;
+        public GameObject plateModelBasePrefab;
+        public GameObject cubeModelBasePrefab;
         public GameObject modelPrefabX;
         public GameObject modelPrefabY;
         public GameObject modelPrefabZ;
+        public GameObject modelPrefabXY;
+        public GameObject modelPrefabYZ;
+        public GameObject modelPrefabXZ;
+        public GameObject modelPrefabXYZ;
         public GameObject breakBasePrefab;
+        public GameObject plateBreakBasePrefab;
+        public GameObject cubeBreakBasePrefab;
         public GameObject breakPieceX;
         public GameObject breakPieceY;
         public GameObject breakPieceZ;
+        public GameObject breakPieceXY;
+        public GameObject breakPieceYZ;
+        public GameObject breakPieceXZ;
+        public GameObject breakPieceXYZ;
 
         public bool HasAnySource =>
             modelSource != null || breakSource != null ||
-            modelSourceX != null || modelSourceY != null || modelSourceZ != null;
+            plateModelSource != null || plateBreakSource != null ||
+            cubeModelSource != null || cubeBreakSource != null ||
+            modelSourceX != null || modelSourceY != null || modelSourceZ != null ||
+            modelSourceXY != null || modelSourceYZ != null || modelSourceXZ != null ||
+            modelSourceXYZ != null;
 
-        /// <summary>
-        /// True when a previous build left object prefabs here, which is what the Bake buttons act on -
-        /// they work off the cache, not the source models, so prefabs built before baking existed can
-        /// still be flattened.
-        /// </summary>
         public bool HasBakeTarget =>
-            modelBasePrefab != null || modelPrefabX != null || modelPrefabY != null || modelPrefabZ != null;
+            modelBasePrefab != null || plateModelBasePrefab != null || cubeModelBasePrefab != null ||
+            modelPrefabX != null || modelPrefabY != null || modelPrefabZ != null ||
+            modelPrefabXY != null || modelPrefabYZ != null || modelPrefabXZ != null ||
+            modelPrefabXYZ != null;
 
-        /// <summary>
-        /// The model dropped on one axis specifically, or null when that axis has none. A non-null value
-        /// means "build this axis from its own model" rather than rotating the shared base.
-        /// </summary>
-        public GameObject PerAxisModelSource(BuildAxis axis) => axis switch
+        /// <summary>The family base source for Bar/Plate/Cube.</summary>
+        public GameObject FamilyModelSource(BuildAxisFamily family) => family switch
         {
-            BuildAxis.X => modelSourceX,
-            BuildAxis.Y => modelSourceY,
-            BuildAxis.Z => modelSourceZ,
-            _ => null,
+            BuildAxisFamily.Plate => plateModelSource,
+            BuildAxisFamily.Cube => cubeModelSource,
+            _ => modelSource,
         };
 
-        public void SetPerAxisModelSource(BuildAxis axis, GameObject source)
+        public GameObject FamilyBreakSource(BuildAxisFamily family) => family switch
         {
-            switch (axis)
+            BuildAxisFamily.Plate => plateBreakSource,
+            BuildAxisFamily.Cube => cubeBreakSource,
+            _ => breakSource,
+        };
+
+        public GameObject FamilyModelBasePrefab(BuildAxisFamily family) => family switch
+        {
+            BuildAxisFamily.Plate => plateModelBasePrefab,
+            BuildAxisFamily.Cube => cubeModelBasePrefab,
+            _ => modelBasePrefab,
+        };
+
+        public void SetFamilyModelBasePrefab(BuildAxisFamily family, GameObject prefab)
+        {
+            switch (family)
             {
-                case BuildAxis.X: modelSourceX = source; break;
-                case BuildAxis.Y: modelSourceY = source; break;
-                case BuildAxis.Z: modelSourceZ = source; break;
+                case BuildAxisFamily.Plate: plateModelBasePrefab = prefab; break;
+                case BuildAxisFamily.Cube: cubeModelBasePrefab = prefab; break;
+                default: modelBasePrefab = prefab; break;
             }
         }
 
-        /// <summary>True when at least one axis carries its own model.</summary>
-        public bool HasPerAxisModels =>
-            modelSourceX != null || modelSourceY != null || modelSourceZ != null;
-
-        /// <summary>
-        /// The model to build an axis from: that axis's own slot, falling back to the shared
-        /// <see cref="modelSource"/> so a half-filled row still produces all three variants.
-        /// </summary>
-        public GameObject ModelSourceFor(BuildAxis axis)
+        public GameObject FamilyBreakBasePrefab(BuildAxisFamily family) => family switch
         {
-            GameObject perAxis = PerAxisModelSource(axis);
-            return perAxis != null ? perAxis : modelSource;
-        }
-
-        /// <summary>Store the prefab built for one axis (X is also the slot used by magnitude 1).</summary>
-        public void SetModelPrefab(BuildAxis axis, GameObject prefab)
-        {
-            switch (axis)
-            {
-                case BuildAxis.Y: modelPrefabY = prefab; break;
-                case BuildAxis.Z: modelPrefabZ = prefab; break;
-                default: modelPrefabX = prefab; break;
-            }
-        }
-
-        public GameObject ModelPrefabFor(BuildAxis axis) => axis switch
-        {
-            BuildAxis.Y => modelPrefabY,
-            BuildAxis.Z => modelPrefabZ,
-            _ => modelPrefabX,
+            BuildAxisFamily.Plate => plateBreakBasePrefab,
+            BuildAxisFamily.Cube => cubeBreakBasePrefab,
+            _ => breakBasePrefab,
         };
 
-        public void SetBreakPiece(BuildAxis axis, GameObject prefab)
+        public void SetFamilyBreakBasePrefab(BuildAxisFamily family, GameObject prefab)
         {
-            switch (axis)
+            switch (family)
             {
-                case BuildAxis.Y: breakPieceY = prefab; break;
-                case BuildAxis.Z: breakPieceZ = prefab; break;
-                default: breakPieceX = prefab; break;
-            }
-        }
-
-        public GameObject BreakPieceFor(BuildAxis axis) => axis switch
-        {
-            BuildAxis.Y => breakPieceY,
-            BuildAxis.Z => breakPieceZ,
-            _ => breakPieceX,
-        };
-
-        [Header("Rotation already baked into each axis mesh")]
-        public Quaternion bakedRotationX;
-        public Quaternion bakedRotationY;
-        public Quaternion bakedRotationZ;
-
-        /// <summary>
-        /// The rotation currently baked into an axis mesh's vertices. Needed because Mesh Per Axis moves the
-        /// rotation off the transform, so a second bake would otherwise read identity and lose it.
-        ///
-        /// An unset field deserializes as the zero quaternion, which is not a rotation - that reads as
-        /// "nothing baked yet".
-        /// </summary>
-        public Quaternion BakedRotationFor(BuildAxis axis)
-        {
-            Quaternion stored = axis switch
-            {
-                BuildAxis.Y => bakedRotationY,
-                BuildAxis.Z => bakedRotationZ,
-                _ => bakedRotationX,
-            };
-
-            return HasBakedRotation(axis) ? stored : Quaternion.identity;
-        }
-
-        /// <summary>
-        /// Whether an axis rotation has been captured yet. Once it has, it is the authored angle - a rebuild
-        /// re-applies it instead of the canonical one, so a hand-tweaked angle is not silently reset.
-        /// </summary>
-        public bool HasBakedRotation(BuildAxis axis)
-        {
-            Quaternion stored = axis switch
-            {
-                BuildAxis.Y => bakedRotationY,
-                BuildAxis.Z => bakedRotationZ,
-                _ => bakedRotationX,
-            };
-
-            // An unset Quaternion field deserializes as (0,0,0,0), which is not a rotation.
-            return stored.x != 0f || stored.y != 0f || stored.z != 0f || stored.w != 0f;
-        }
-
-        public void SetBakedRotation(BuildAxis axis, Quaternion rotation)
-        {
-            switch (axis)
-            {
-                case BuildAxis.Y: bakedRotationY = rotation; break;
-                case BuildAxis.Z: bakedRotationZ = rotation; break;
-                default: bakedRotationX = rotation; break;
+                case BuildAxisFamily.Plate: plateBreakBasePrefab = prefab; break;
+                case BuildAxisFamily.Cube: cubeBreakBasePrefab = prefab; break;
+                default: breakBasePrefab = prefab; break;
             }
         }
     }

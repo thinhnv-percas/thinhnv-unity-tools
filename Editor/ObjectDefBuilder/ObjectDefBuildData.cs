@@ -40,27 +40,31 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     }
 
     /// <summary>
-    /// How the three axis variants of a stretched model prefab are produced.
+    /// How the axis variants of a stretched model prefab are produced, applied per family.
     ///
-    /// This matters because the level data carries no orientation - every object's "rotation" is zero
-    /// across all levels, and <c>SpawnControllerView.SpawnObject</c> applies it as-is - so whatever
+    /// Three families exist: Bar (single-axis X/Y/Z, base authored along Y), Plate (dual-axis
+    /// XY/YZ/XZ, base authored along YZ), and Cube (triple-axis XYZ, single orientation). Rotation
+    /// happens within a family only — a Bar base is never rotated to produce a Plate variant.
+    ///
+    /// This matters because the level data carries no orientation — every object's "rotation" is zero
+    /// across all levels, and <c>SpawnControllerView.SpawnObject</c> applies it as-is — so whatever
     /// orientation a size variant needs has to be baked into its prefab.
     /// </summary>
     public enum ModelVariantMode
     {
         /// <summary>
-        /// One base prefab plus three prefab variants of it, each with the model rotated onto its axis
-        /// (the same mechanism the *_Break_Piece variants use).
+        /// Per family: one base prefab plus rotated variants. Bar produces X/Y/Z from a Y-authored
+        /// base; Plate produces XY/YZ/XZ from a YZ-authored base; Cube produces XYZ with no rotation.
         /// </summary>
         RotateBase = 0,
 
         /// <summary>
-        /// Three independent prefabs, one per axis, built from that axis's own model slot. Slots left
-        /// empty fall back to the row's Model, which reproduces the shipped layout of three identical files.
+        /// Independent prefabs per axis, each from its own model slot. Slots left empty fall back to
+        /// the family's shared base source.
         /// </summary>
         SeparateModels = 1,
 
-        /// <summary>One prefab per magnitude, shared by all three axis rows of the definition.</summary>
+        /// <summary>One prefab per magnitude, shared by all axis rows of that family.</summary>
         Shared = 2,
     }
 

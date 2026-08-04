@@ -15,9 +15,9 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField(axisName, EditorStyles.miniBoldLabel, GUILayout.Width(28));
+                EditorGUILayout.LabelField(axisName, EditorStyles.miniBoldLabel, GUILayout.Width(36));
                 EditorGUILayout.LabelField(
-                    axis.SizeLabel(row.magnitude), EditorStyles.miniLabel, GUILayout.Width(70));
+                    axis.SizeLabel(row.magnitude), EditorStyles.miniLabel, GUILayout.Width(90));
                 EditorGUILayout.LabelField(
                     $"{ObjectDefNaming.ModelPrefab(entry, row.magnitude, axis)}   |   " +
                     ObjectDefNaming.BreakPiecePrefab(entry, row.magnitude, axis),
@@ -34,7 +34,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             }
         }
 
-        /// <summary>Where this axis's model comes from, so the rotate-vs-own-model choice is visible per row.</summary>
         private static string AxisSourceHint(ObjectDefBuildEntry entry, ObjectDefBuildRow row, BuildAxis axis)
         {
             if (axis == BuildAxis.None || entry.modelVariantMode == ModelVariantMode.Shared)
@@ -47,15 +46,9 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 return "own model";
             }
 
-            return entry.modelVariantMode == ModelVariantMode.RotateBase ? "rotated" : "row model";
+            return entry.modelVariantMode == ModelVariantMode.RotateBase ? "rotated" : "family base";
         }
 
-        /// <summary>
-        /// The per-axis model slot. In <see cref="ModelVariantMode.RotateBase"/> a model here overrides the
-        /// rotation for that axis alone; in <see cref="ModelVariantMode.SeparateModels"/> it is that axis's
-        /// source. Hidden in Shared mode, where one prefab covers all three axes and the name carries no
-        /// axis suffix to write an override to.
-        /// </summary>
         private static void DrawAxisModelSlot(ObjectDefBuildEntry entry, ObjectDefBuildRow row, BuildAxis axis)
         {
             if (axis == BuildAxis.None || entry.modelVariantMode == ModelVariantMode.Shared)
@@ -65,7 +58,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             string tooltip = entry.modelVariantMode == ModelVariantMode.RotateBase
                 ? $"Drop a model built for {axis} to use it instead of rotating the base. Empty = rotated variant."
-                : "Empty = use the row's Model above.";
+                : "Empty = use the family's base model above.";
 
             using (new EditorGUI.IndentLevelScope())
             {
@@ -85,8 +78,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 EditorGUILayout.ObjectField("Model", row.ModelPrefabFor(axis), typeof(GameObject), false);
                 EditorGUILayout.ObjectField("Break Piece", row.BreakPieceFor(axis), typeof(GameObject), false);
 
-                // Per-size assets, shown once on the first line rather than repeated on all three.
-                if (axis != BuildAxis.X && axis != BuildAxis.None)
+                bool isFirstOfFamily = axis == BuildAxis.None || IsFirstOfFamily(axis);
+                if (!isFirstOfFamily)
                 {
                     return;
                 }
@@ -94,12 +87,23 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 EditorGUILayout.ObjectField("Model Mat", row.modelMaterial, typeof(Material), false);
                 EditorGUILayout.ObjectField("Piece Mat", row.pieceMaterial, typeof(Material), false);
 
-                if (axis == BuildAxis.X)
+                if (axis != BuildAxis.None)
                 {
-                    EditorGUILayout.ObjectField("Model Base", row.modelBasePrefab, typeof(GameObject), false);
-                    EditorGUILayout.ObjectField("Break Base", row.breakBasePrefab, typeof(GameObject), false);
+                    BuildAxisFamily family = BuildAxisExtensions.Family(axis);
+                    EditorGUILayout.ObjectField("Model Base",
+                        row.FamilyModelBasePrefab(family), typeof(GameObject), false);
+                    EditorGUILayout.ObjectField("Break Base",
+                        row.FamilyBreakBasePrefab(family), typeof(GameObject), false);
                 }
             }
         }
+
+        private static bool IsFirstOfFamily(BuildAxis axis) => axis switch
+        {
+            BuildAxis.X => true,
+            BuildAxis.XY => true,
+            BuildAxis.XYZ => true,
+            _ => false,
+        };
     }
 }

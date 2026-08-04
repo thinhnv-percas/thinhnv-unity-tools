@@ -10,11 +10,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     /// </summary>
     public partial class ObjectDefBuilderWindow
     {
-        /// <summary>
-        /// Copy the definition's model and shatter prefabs into the entry's rows, adding rows for any
-        /// magnitude it mentions. Base prefabs are recovered from the prefab-variant relationship, which is
-        /// what the Bake buttons need. Slots the definition leaves empty keep whatever the cache held.
-        /// </summary>
         private void FillFromDefinition(ObjectDefBuildEntry entry)
         {
             DefinitionRead read = ObjectDefinitionReader.Read(entry.definition, entry.breakSlot);
@@ -53,7 +48,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             Debug.Log($"[ObjectDefBuilder] {status}", entry.definition);
         }
 
-        /// <summary>Write one axis of a row, recovering its base prefab and material along the way.</summary>
         private static int ApplyToRow(ObjectDefBuildRow row, BuildAxis axis,
             GameObject model, GameObject breakPieces)
         {
@@ -62,7 +56,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             if (model != null)
             {
                 row.SetModelPrefab(axis, model);
-                row.modelBasePrefab = BaseOf(model) ?? row.modelBasePrefab;
+                RecoverBase(row, model, axis, isBreak: false);
                 row.modelMaterial = MaterialOf(model) ?? row.modelMaterial;
                 filled++;
             }
@@ -70,7 +64,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             if (breakPieces != null)
             {
                 row.SetBreakPiece(axis, breakPieces);
-                row.breakBasePrefab = BaseOf(breakPieces) ?? row.breakBasePrefab;
+                RecoverBase(row, breakPieces, axis, isBreak: true);
                 row.pieceMaterial = MaterialOf(breakPieces) ?? row.pieceMaterial;
                 filled++;
             }
@@ -78,14 +72,29 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             return filled;
         }
 
-        /// <summary>The prefab a variant derives from, or null when it is a plain prefab.</summary>
+        /// <summary>Recover the family base prefab from the prefab-variant relationship.</summary>
+        private static void RecoverBase(ObjectDefBuildRow row, GameObject prefab, BuildAxis axis, bool isBreak)
+        {
+            GameObject basePrefab = BaseOf(prefab);
+            if (basePrefab == null)
+            {
+                return;
+            }
+
+            BuildAxisFamily family = BuildAxisExtensions.Family(axis);
+            if (isBreak)
+            {
+                row.SetFamilyBreakBasePrefab(family, basePrefab);
+            }
+            else
+            {
+                row.SetFamilyModelBasePrefab(family, basePrefab);
+            }
+        }
+
         private static GameObject BaseOf(GameObject prefab) =>
             PrefabUtility.GetCorrespondingObjectFromSource(prefab) as GameObject;
 
-        /// <summary>
-        /// A prefab's first renderer material, so the row's cached material view matches its prefabs
-        /// instead of showing empty next to filled slots.
-        /// </summary>
         private static Material MaterialOf(GameObject prefab)
         {
             MeshRenderer renderer = prefab.GetComponentInChildren<MeshRenderer>(true);

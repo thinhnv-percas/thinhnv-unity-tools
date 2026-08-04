@@ -5,17 +5,11 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.ObjectDefBuilder
 {
     /// <summary>
-    /// Baking as an action rather than a build-time flag: the `Bake Base Mesh` / `Bake Size Mesh` toggles
-    /// only fire while prefabs are being written, so prefabs built before baking existed - or before those
-    /// toggles were switched on - had no way to be flattened short of a full rebuild.
-    ///
-    /// These buttons work off the prefabs the cache already points at, and bake everything that can be
-    /// baked regardless of the toggles. Variants are skipped by <see cref="MeshBakeFactory"/> with a
-    /// warning, since a variant cannot replace the hierarchy it inherits.
+    /// Baking as a standalone action: flatten already-built prefabs into baked meshes without a full
+    /// rebuild. Works off the prefabs the cache points at, regardless of the bake toggles.
     /// </summary>
     public partial class ObjectDefBuilderWindow
     {
-        /// <summary>Queue a bake for after this OnGUI pass, for the same reason builds are queued.</summary>
         private void RequestBake(ObjectDefBuildEntry entry, int onlyMagnitude = 0)
         {
             EditorApplication.delayCall += () =>
@@ -25,7 +19,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             };
         }
 
-        /// <summary>Bake every included size, or just <paramref name="onlyMagnitude"/> when non-zero.</summary>
         private void BakeEntry(ObjectDefBuildEntry entry, int onlyMagnitude = 0)
         {
             lastBuilt.Clear();
@@ -63,21 +56,19 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             Debug.Log($"[ObjectDefBuilder] {status}");
         }
 
-        /// <summary>
-        /// Bake one row: the model base first, then either a per-axis mesh for each variant (derived from
-        /// the base's freshly baked mesh) or the size prefabs themselves.
-        /// </summary>
         private void BakeRow(ObjectDefBuildEntry entry, ObjectDefBuildRow row, ref int baked, ref int skipped)
         {
-            Mesh baseMesh = null;
-            bool scratchMesh = false;
-
-            if (row.modelBasePrefab != null && entry.bakeBaseMesh)
+            if (row.magnitude > 1 && entry.bakeMeshPerAxis)
             {
-                baseMesh = MeshBakeFactory.Bake(entry, row.modelBasePrefab);
-                if (baseMesh != null)
+                BakeAllFamilies(entry, row, ref baked, ref skipped);
+                return;
+            }
+
+            foreach (GameObject prefab in SizePrefabs(row))
+            {
+                if (MeshBakeFactory.Bake(entry, prefab) != null)
                 {
-                    Track(lastBuilt, row.modelBasePrefab);
+                    Track(lastBuilt, prefab);
                     baked++;
                 }
                 else
@@ -85,26 +76,28 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     skipped++;
                 }
             }
-            else if (row.modelBasePrefab != null && entry.bakeMeshPerAxis)
-            {
-                // Per-axis without baking the base: read its geometry, leave the asset alone.
-                baseMesh = MeshBakeFactory.CombineFrom(entry, row.modelBasePrefab);
-                scratchMesh = baseMesh != null;
-            }
+        }
 
-            try
+        private void BakeAllFamilies(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            ref int baked, ref int skipped)
+        {
+            foreach (BuildAxisFamily family in AllFamilies)
             {
-                if (entry.bakeMeshPerAxis && baseMesh != null && row.magnitude > 1)
+                GameObject basePrefab = row.FamilyModelBasePrefab(family);
+                if (basePrefab == null)
                 {
-                    BakeAxes(entry, row, baseMesh, ref baked);
-                    return;
+                    continue;
                 }
 
-                foreach (GameObject prefab in SizePrefabs(row))
+                Mesh baseMesh = null;
+                bool scratchMesh = false;
+
+                if (entry.bakeBaseMesh)
                 {
-                    if (MeshBakeFactory.Bake(entry, prefab) != null)
+                    baseMesh = MeshBakeFactory.Bake(entry, basePrefab);
+                    if (baseMesh != null)
                     {
-                        Track(lastBuilt, prefab);
+                        Track(lastBuilt, basePrefab);
                         baked++;
                     }
                     else
@@ -112,20 +105,33 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                         skipped++;
                     }
                 }
-            }
-            finally
-            {
-                // CombineFrom hands back a scratch mesh, not an asset - release it on every path out.
-                if (scratchMesh)
+                else
                 {
-                    Object.DestroyImmediate(baseMesh);
+                    baseMesh = MeshBakeFactory.CombineFrom(entry, basePrefab);
+                    scratchMesh = baseMesh != null;
+                }
+
+                try
+                {
+                    if (baseMesh != null)
+                    {
+                        BakeAxes(entry, row, baseMesh, BuildAxisExtensions.FamilyAxes(family), ref baked);
+                    }
+                }
+                finally
+                {
+                    if (scratchMesh)
+                    {
+                        Object.DestroyImmediate(baseMesh);
+                    }
                 }
             }
         }
 
-        private void BakeAxes(ObjectDefBuildEntry entry, ObjectDefBuildRow row, Mesh baseMesh, ref int baked)
+        private void BakeAxes(ObjectDefBuildEntry entry, ObjectDefBuildRow row, Mesh baseMesh,
+            BuildAxis[] axes, ref int baked)
         {
-            foreach (BuildAxis axis in BuildAxisExtensions.All)
+            foreach (BuildAxis axis in axes)
             {
                 GameObject variant = row.ModelPrefabFor(axis);
                 if (variant != null && MeshBakeFactory.BakeAxis(entry, row, variant, baseMesh, axis))
@@ -136,9 +142,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             }
         }
 
-        /// <summary>
-        /// A row's size prefabs, de-duplicated because Shared mode points all three axes at one prefab.
-        /// </summary>
         private static IEnumerable<GameObject> SizePrefabs(ObjectDefBuildRow row)
         {
             var seen = new List<GameObject>();

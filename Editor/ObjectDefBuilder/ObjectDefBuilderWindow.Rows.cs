@@ -24,10 +24,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             showResults = EditorGUILayout.ToggleLeft("Show built assets per axis", showResults);
         }
 
-        /// <summary>
-        /// How many magnitudes this object has. Rows are added/removed to match on the next repaint;
-        /// shrinking drops the trailing rows, so their cached sources are lost.
-        /// </summary>
         private static void DrawMagnitudeCount(ObjectDefBuildEntry entry)
         {
             using (new EditorGUILayout.HorizontalScope())
@@ -81,11 +77,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
                     using (new EditorGUI.DisabledScope(!row.HasBakeTarget))
                     {
-                        var bake = new GUIContent("Bake",
-                            "Flatten this size's already-built prefabs into baked meshes. Works off the " +
-                            "cached prefabs, so it does not need a rebuild. Variants are skipped - their " +
-                            "base is baked instead.");
-                        if (GUILayout.Button(bake, GUILayout.Width(46)))
+                        if (GUILayout.Button("Bake", GUILayout.Width(46)))
                         {
                             RequestBake(entry, row.magnitude);
                         }
@@ -94,24 +86,41 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
                 using (new EditorGUI.DisabledScope(!row.include))
                 {
-                    row.modelSource = (GameObject)EditorGUILayout.ObjectField(
-                        "Model", row.modelSource, typeof(GameObject), false);
-                    row.breakSource = (GameObject)EditorGUILayout.ObjectField(
-                        "Break Model", row.breakSource, typeof(GameObject), false);
-                    row.modelTexture = (Texture2D)EditorGUILayout.ObjectField(
-                        "Model Texture", row.modelTexture, typeof(Texture2D), false);
-                    row.pieceTexture = (Texture2D)EditorGUILayout.ObjectField(
-                        new GUIContent("Piece Texture", "Empty = reuse the model texture."),
-                        row.pieceTexture, typeof(Texture2D), false);
-
+                    DrawFamilySources(row);
                     DrawAxisTable(entry, row);
                 }
             }
         }
 
+        private static void DrawFamilySources(ObjectDefBuildRow row)
+        {
+            EditorGUILayout.LabelField("Bar (single-axis)", EditorStyles.miniBoldLabel);
+            row.modelSource = (GameObject)EditorGUILayout.ObjectField(
+                "Model", row.modelSource, typeof(GameObject), false);
+            row.breakSource = (GameObject)EditorGUILayout.ObjectField(
+                "Break Model", row.breakSource, typeof(GameObject), false);
+            row.modelTexture = (Texture2D)EditorGUILayout.ObjectField(
+                "Model Texture", row.modelTexture, typeof(Texture2D), false);
+            row.pieceTexture = (Texture2D)EditorGUILayout.ObjectField(
+                new GUIContent("Piece Texture", "Empty = reuse the model texture."),
+                row.pieceTexture, typeof(Texture2D), false);
+
+            EditorGUILayout.LabelField("Plate (dual-axis)", EditorStyles.miniBoldLabel);
+            row.plateModelSource = (GameObject)EditorGUILayout.ObjectField(
+                "Plate Model", row.plateModelSource, typeof(GameObject), false);
+            row.plateBreakSource = (GameObject)EditorGUILayout.ObjectField(
+                "Plate Break", row.plateBreakSource, typeof(GameObject), false);
+
+            EditorGUILayout.LabelField("Cube (triple-axis)", EditorStyles.miniBoldLabel);
+            row.cubeModelSource = (GameObject)EditorGUILayout.ObjectField(
+                "Cube Model", row.cubeModelSource, typeof(GameObject), false);
+            row.cubeBreakSource = (GameObject)EditorGUILayout.ObjectField(
+                "Cube Break", row.cubeBreakSource, typeof(GameObject), false);
+        }
+
         /// <summary>
-        /// What each stretched axis of this size resolves to: the level-data size vector and the two
-        /// prefab names that get written for it. Magnitude 1 has no axis - it is the uniform 1x1x1 base.
+        /// Per-axis breakdown grouped by family: Bar (X/Y/Z), Plate (XY/YZ/XZ), Cube (XYZ).
+        /// Magnitude 1 has no axis — it is the uniform 1x1x1 base.
         /// </summary>
         private void DrawAxisTable(ObjectDefBuildEntry entry, ObjectDefBuildRow row)
         {
@@ -126,10 +135,19 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     return;
                 }
 
-                foreach (BuildAxis axis in BuildAxisExtensions.All)
-                {
-                    DrawAxisLine(entry, row, axis);
-                }
+                DrawFamilyGroup(entry, row, "Bar", BuildAxisExtensions.BarAxes);
+                DrawFamilyGroup(entry, row, "Plate", BuildAxisExtensions.PlateAxes);
+                DrawFamilyGroup(entry, row, "Cube", BuildAxisExtensions.CubeAxes);
+            }
+        }
+
+        private void DrawFamilyGroup(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
+            string label, BuildAxis[] axes)
+        {
+            EditorGUILayout.LabelField(label, EditorStyles.miniLabel);
+            foreach (BuildAxis axis in axes)
+            {
+                DrawAxisLine(entry, row, axis);
             }
         }
     }

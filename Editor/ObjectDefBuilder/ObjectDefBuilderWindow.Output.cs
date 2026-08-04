@@ -31,11 +31,11 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         private static string ModelVariantHint(ModelVariantMode mode) => mode switch
         {
             ModelVariantMode.RotateBase =>
-                "Base/<prefix>_2_ModelBase + three variants of it, rotated per axis. " +
-                "An axis with its own model in the size row is built from that instead.",
+                "Per family: a base prefab + rotated variants (Bar: X/Y/Z, Plate: XY/YZ/XZ, Cube: XYZ). " +
+                "An axis with its own model slot is built from that instead.",
             ModelVariantMode.SeparateModels =>
-                "Three prefabs from the row's per-axis model slots (empty = the row's Model).",
-            _ => "One prefab per magnitude, shared by all three axis rows (no per-axis models).",
+                "Independent prefabs per axis, each from its own model slot (empty = family base).",
+            _ => "One prefab per magnitude per family, shared by all axes of that family.",
         };
 
         /// <summary>
