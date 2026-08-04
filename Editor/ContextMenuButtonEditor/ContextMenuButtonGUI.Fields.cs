@@ -20,15 +20,21 @@ public static partial class ContextMenuButtonGUI
     private static object DrawField(string label, Type type, object value, string key)
     {
         if (type == typeof(int)) return EditorGUILayout.IntField(label, (int)(value ?? 0));
+        if (type == typeof(long)) return EditorGUILayout.LongField(label, (long)(value ?? 0L));
         if (type == typeof(float)) return EditorGUILayout.FloatField(label, (float)(value ?? 0f));
+        if (type == typeof(double)) return EditorGUILayout.DoubleField(label, (double)(value ?? 0d));
         if (type == typeof(bool)) return EditorGUILayout.Toggle(label, (bool)(value ?? false));
         if (type == typeof(string)) return EditorGUILayout.TextField(label, (string)value ?? string.Empty);
+        if (type == typeof(Vector2Int)) return EditorGUILayout.Vector2IntField(label, (Vector2Int)(value ?? Vector2Int.zero));
+        if (type == typeof(Vector3Int)) return EditorGUILayout.Vector3IntField(label, (Vector3Int)(value ?? Vector3Int.zero));
         if (type == typeof(Vector2)) return EditorGUILayout.Vector2Field(label, (Vector2)(value ?? Vector2.zero));
         if (type == typeof(Vector3)) return EditorGUILayout.Vector3Field(label, (Vector3)(value ?? Vector3.zero));
         if (type == typeof(Vector4)) return EditorGUILayout.Vector4Field(label, (Vector4)(value ?? Vector4.zero));
         if (type == typeof(Color)) return EditorGUILayout.ColorField(label, (Color)(value ?? Color.white));
         if (type == typeof(Bounds)) return EditorGUILayout.BoundsField(label, (Bounds)(value ?? default(Bounds)));
+        if (type == typeof(BoundsInt)) return EditorGUILayout.BoundsIntField(label, (BoundsInt)(value ?? default(BoundsInt)));
         if (type == typeof(Rect)) return EditorGUILayout.RectField(label, (Rect)(value ?? default(Rect)));
+        if (type == typeof(RectInt)) return EditorGUILayout.RectIntField(label, (RectInt)(value ?? default(RectInt)));
         if (type == typeof(AnimationCurve)) return EditorGUILayout.CurveField(label, (AnimationCurve)value ?? new AnimationCurve());
         if (type.IsEnum) return EditorGUILayout.EnumPopup(label, (Enum)(value ?? Enum.GetValues(type).GetValue(0)));
         if (typeof(UnityEngine.Object).IsAssignableFrom(type))
