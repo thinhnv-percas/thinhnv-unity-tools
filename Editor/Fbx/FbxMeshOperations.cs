@@ -39,6 +39,91 @@ namespace Percas.UnityTools.Fbx
         }
 
         /// <summary>
+        /// Midpoint of the mesh's control-point bounding box, in the mesh's own
+        /// local space. This is a property of the raw vertex data, not the same
+        /// thing as the node's RotationPivot/ScalingPivot/GeometricTranslation —
+        /// a mesh authored with its data already centered on its pivot will have
+        /// bounds center ≈ (0,0,0) with no pivot property set at all.
+        /// </summary>
+        public static FbxVector4? ComputeBoundsCenter(FbxMesh mesh)
+        {
+            var count = mesh.GetControlPointsCount();
+            if (count == 0)
+            {
+                return null;
+            }
+
+            var min = mesh.GetControlPointAt(0);
+            var max = min;
+            for (var i = 1; i < count; i++)
+            {
+                var p = mesh.GetControlPointAt(i);
+                min = new FbxVector4(Math.Min(min.X, p.X), Math.Min(min.Y, p.Y), Math.Min(min.Z, p.Z));
+                max = new FbxVector4(Math.Max(max.X, p.X), Math.Max(max.Y, p.Y), Math.Max(max.Z, p.Z));
+            }
+
+            return new FbxVector4((min.X + max.X) / 2.0, (min.Y + max.Y) / 2.0, (min.Z + max.Z) / 2.0);
+        }
+
+        /// <summary>
+        /// Shifts every control point so the mesh's local bounds center becomes
+        /// newCenterLocal, and compensates the node's local translation (by the
+        /// same shift rotated/scaled through the node's own LclRotation/LclScaling)
+        /// so the object does not visually jump in the scene — the classic
+        /// "recenter pivot" operation, just driven by typing a target center
+        /// instead of a one-click "move to origin" button.
+        ///
+        /// Ignores rotation/scaling pivots and pre/post-rotation on this node —
+        /// the same approximation as FbxNodeOperations.Reparent's preserve-world-
+        /// transform path, for the same reason (no animation evaluator in this binding).
+        /// </summary>
+        public static void RecenterPivot(FbxNode node, FbxVector4 newCenterLocal)
+        {
+            if (!TryGetMesh(node, out var mesh))
+            {
+                throw new InvalidOperationException("Node has no mesh.");
+            }
+
+            var currentCenter = ComputeBoundsCenter(mesh);
+            if (!currentCenter.HasValue)
+            {
+                throw new InvalidOperationException("Mesh has no control points.");
+            }
+
+            var delta = new FbxVector4(
+                newCenterLocal.X - currentCenter.Value.X,
+                newCenterLocal.Y - currentCenter.Value.Y,
+                newCenterLocal.Z - currentCenter.Value.Z);
+
+            var count = mesh.GetControlPointsCount();
+            for (var i = 0; i < count; i++)
+            {
+                var p = mesh.GetControlPointAt(i);
+                mesh.SetControlPointAt(new FbxVector4(p.X + delta.X, p.Y + delta.Y, p.Z + delta.Z), i);
+            }
+
+            var rotateScale = new FbxAMatrix();
+            rotateScale.SetTRS(
+                new FbxVector4(0, 0, 0),
+                ToVector4(FbxNodeOperations.GetLocalRotation(node)),
+                ToVector4(FbxNodeOperations.GetLocalScaling(node)));
+
+            // MultR transforms a direction (rotate + scale only, no translation) —
+            // MultT would also add the matrix's translation, which we don't want here.
+            var rotatedDelta = rotateScale.MultR(delta);
+
+            var oldTranslation = FbxNodeOperations.GetLocalTranslation(node);
+            var newTranslation = new FbxDouble3(
+                oldTranslation.X - rotatedDelta.X,
+                oldTranslation.Y - rotatedDelta.Y,
+                oldTranslation.Z - rotatedDelta.Z);
+
+            FbxNodeOperations.SetLocalTranslation(node, newTranslation);
+        }
+
+        private static FbxVector4 ToVector4(FbxDouble3 v) => new FbxVector4(v.X, v.Y, v.Z);
+
+        /// <summary>
         /// Rebuilds a fresh per-control-point normal layer from face geometry
         /// (cross-product face normal, accumulated into every corner it touches
         /// before normalizing — larger faces naturally contribute more, the same

@@ -34,6 +34,13 @@ window both work. Three tabs on the right-hand panel, one per phase:
 
 - **Transform** (Phase 1) — local translation/rotation/scale, rotation/scaling
   pivot, geometric offset, rename, reparent (drag-and-drop) and delete nodes.
+  Also shows the mesh's **Mesh Bounds Center**, computed from its own vertex
+  data — this is *not* the same thing as Rotation/Scaling Pivot or Geometric
+  Offset (those are separate FBX properties most files never set; a centered-
+  looking pivot in your DCC tool is often just where the vertex data sits, no
+  property involved). Editing this field moves the mesh's control points and
+  compensates the node's Translation so the object stays put in the scene —
+  a "recenter pivot" action, not a write to the other three fields.
 - **Material** (Phase 2) — reassign which scene material a node's material
   slot points to, and browse/replace a material's diffuse texture file.
 - **Mesh** (Phase 3a + 3b) — a data-table of control points you can nudge by
@@ -67,6 +74,11 @@ Unity version's registry offers.
   rotation on ancestor nodes are not accounted for. Fine for the common case;
   verify visually after reparenting a node whose ancestors have non-default
   pivots.
+- **"Recenter pivot" (editing Mesh Bounds Center) has the same approximation**:
+  it compensates the node's own Translation using only its Rotation/Scaling,
+  ignoring its own rotation/scaling pivots and pre/post-rotation. Fine for the
+  common case (a node with default pivots); verify visually otherwise. Blocked
+  entirely on skinned meshes, same as the other vertex-editing operations.
 - **Weld is scoped-down in this version**: it merges control points and
   rebuilds polygon topology, but does **not** preserve the mesh's existing UV
   or per-polygon material layers — welded geometry gets a single default
