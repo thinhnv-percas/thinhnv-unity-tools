@@ -4,10 +4,14 @@
   "displayName": "Percas Unity Tools",
   "description": "Editor utilities for Unity projects at Percas Studio.",
   "unity": "2021.3",
+  "dependencies": {
+    "com.unity.formats.fbx": "4.2.1"
+  },
   "keywords": [
     "editor",
     "inspector",
-    "tools"
+    "tools",
+    "fbx"
   ],
   "author": {
     "name": "Percas Studio",
