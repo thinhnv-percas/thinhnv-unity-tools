@@ -27,8 +27,10 @@ multiple are selected.
 
 Opens a real `.fbx` file's node hierarchy inside Unity and edits it, then
 **saves the changes back into the original `.fbx` file** using the Autodesk
-FBX SDK bindings — not just into Unity's imported copy. Three tabs on the
-right-hand panel, one per phase:
+FBX SDK bindings — not just into Unity's imported copy. Open a file via the
+**Open...** button, or by dragging an `.fbx` onto the window — either a raw
+file from Windows Explorer or an imported model asset from the Project
+window both work. Three tabs on the right-hand panel, one per phase:
 
 - **Transform** (Phase 1) — local translation/rotation/scale, rotation/scaling
   pivot, geometric offset, rename, reparent (drag-and-drop) and delete nodes.

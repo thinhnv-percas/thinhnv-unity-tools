@@ -28,23 +28,15 @@ namespace Percas.UnityTools.Fbx
         public static bool IsBoneOrSkinned(FbxNode node)
         {
             var attribute = node.GetNodeAttribute();
-            if (attribute == null)
-            {
-                return false;
-            }
-
-            if (attribute.GetAttributeType() == FbxNodeAttribute.EType.eSkeleton)
+            if (attribute != null && attribute.GetAttributeType() == FbxNodeAttribute.EType.eSkeleton)
             {
                 return true;
             }
 
-            if (attribute.GetAttributeType() == FbxNodeAttribute.EType.eMesh)
-            {
-                var mesh = (FbxMesh)attribute;
-                return mesh.GetDeformerCount(FbxDeformer.EDeformerType.eSkin) > 0;
-            }
-
-            return false;
+            // node.GetMesh() is the SDK's safe accessor (null if not a mesh) —
+            // casting GetNodeAttribute() directly to FbxMesh throws here.
+            var mesh = node.GetMesh();
+            return mesh != null && mesh.GetDeformerCount(FbxDeformer.EDeformerType.eSkin) > 0;
         }
 
         public static void Rename(FbxNode node, string newName)

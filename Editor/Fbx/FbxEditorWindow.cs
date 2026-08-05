@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Autodesk.Fbx;
 using UnityEditor;
 using UnityEditor.IMGUI.Controls;
@@ -54,9 +55,16 @@ namespace Percas.UnityTools.Fbx
 
         private void OnGUI()
         {
+            HandleFileDrop();
             DrawToolbar();
 
-            if (_document.IsOpen && _document.IsSaveBlocked)
+            if (!_document.IsOpen)
+            {
+                EditorGUILayout.HelpBox(
+                    "Drag an .fbx file here (from Windows Explorer or the Project window) or use Open...",
+                    MessageType.Info);
+            }
+            else if (_document.IsSaveBlocked)
             {
                 EditorGUILayout.HelpBox(
                     "This file contains animation, skinning or blend shapes. Saving is disabled until " +
@@ -136,14 +144,72 @@ namespace Percas.UnityTools.Fbx
             EditorGUILayout.EndHorizontal();
         }
 
-        private void OpenFile()
+        /// <summary>
+        /// Accepts an .fbx dragged in either as a raw OS file (DragAndDrop.paths,
+        /// e.g. from Windows Explorer) or as a Unity asset reference
+        /// (DragAndDrop.objectReferences, e.g. from the Project window).
+        /// </summary>
+        private void HandleFileDrop()
         {
-            var path = EditorUtility.OpenFilePanel("Open FBX", "", "fbx");
-            if (string.IsNullOrEmpty(path))
+            var evt = Event.current;
+            if (evt.type != EventType.DragUpdated && evt.type != EventType.DragPerform)
             {
                 return;
             }
 
+            var fbxPath = FindDraggedFbxPath();
+            if (fbxPath == null)
+            {
+                return;
+            }
+
+            DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
+
+            if (evt.type == EventType.DragPerform)
+            {
+                DragAndDrop.AcceptDrag();
+                OpenFileAtPath(fbxPath);
+            }
+
+            evt.Use();
+        }
+
+        private static string FindDraggedFbxPath()
+        {
+            foreach (var path in DragAndDrop.paths)
+            {
+                if (IsFbxPath(path))
+                {
+                    return path;
+                }
+            }
+
+            foreach (var obj in DragAndDrop.objectReferences)
+            {
+                var assetPath = AssetDatabase.GetAssetPath(obj);
+                if (!string.IsNullOrEmpty(assetPath) && IsFbxPath(assetPath))
+                {
+                    return Path.GetFullPath(assetPath);
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsFbxPath(string path) =>
+            string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase);
+
+        private void OpenFile()
+        {
+            var path = EditorUtility.OpenFilePanel("Open FBX", "", "fbx");
+            if (!string.IsNullOrEmpty(path))
+            {
+                OpenFileAtPath(path);
+            }
+        }
+
+        private void OpenFileAtPath(string path)
+        {
             try
             {
                 _document.Open(path);
@@ -163,9 +229,7 @@ namespace Percas.UnityTools.Fbx
                 return;
             }
 
-            var path = _document.FilePath;
-            _document.Open(path);
-            _treeView.Reload();
+            OpenFileAtPath(_document.FilePath);
         }
 
         private void SaveFile(string path)

@@ -191,10 +191,13 @@ namespace Percas.UnityTools.Fbx
                 return;
             }
 
-            var attribute = node.GetNodeAttribute();
-            if (attribute != null && attribute.GetAttributeType() == FbxNodeAttribute.EType.eMesh)
+            // node.GetMesh() is the SDK's own safe accessor — it returns null if the
+            // attribute isn't a mesh. A direct (FbxMesh)node.GetNodeAttribute() cast
+            // throws InvalidCastException in this binding even when EType is eMesh,
+            // since GetNodeAttribute() hands back a base FbxNodeAttribute wrapper.
+            var mesh = node.GetMesh();
+            if (mesh != null)
             {
-                var mesh = (FbxMesh)attribute;
                 if (mesh.GetDeformerCount(FbxDeformer.EDeformerType.eSkin) > 0)
                 {
                     HasSkinning = true;

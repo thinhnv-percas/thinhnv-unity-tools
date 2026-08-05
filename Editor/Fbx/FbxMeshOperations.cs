@@ -27,15 +27,10 @@ namespace Percas.UnityTools.Fbx
     {
         public static bool TryGetMesh(FbxNode node, out FbxMesh mesh)
         {
-            var attribute = node != null ? node.GetNodeAttribute() : null;
-            if (attribute != null && attribute.GetAttributeType() == FbxNodeAttribute.EType.eMesh)
-            {
-                mesh = (FbxMesh)attribute;
-                return true;
-            }
-
-            mesh = null;
-            return false;
+            // node.GetMesh() is the SDK's safe accessor (null if not a mesh) —
+            // casting GetNodeAttribute() directly to FbxMesh throws in this binding.
+            mesh = node != null ? node.GetMesh() : null;
+            return mesh != null;
         }
 
         public static void SetControlPoint(FbxMesh mesh, int index, FbxVector4 value)
