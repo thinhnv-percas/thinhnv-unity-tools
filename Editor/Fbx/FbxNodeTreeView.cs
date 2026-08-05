@@ -44,18 +44,20 @@ namespace Percas.UnityTools.Fbx
 
             if (_document.IsOpen)
             {
-                BuildChildren(root, _document.RootNode);
+                BuildChildren(root, _document.RootNode, 0);
             }
             else
             {
-                root.AddChild(new TreeViewItem { id = 0, displayName = "(no file open)" });
+                root.AddChild(new TreeViewItem { id = 0, depth = 0, displayName = "(no file open)" });
             }
 
-            TreeViewUtility<int>.SetupDepthsFromParentsAndChildren(root);
             return root;
         }
 
-        private void BuildChildren(TreeViewItem parentItem, FbxNode fbxNode)
+        // Depths are set directly from recursion depth here rather than via
+        // TreeViewUtility<T>.SetupDepthsFromParentsAndChildren — that type is
+        // internal to the UnityEditor assembly and not callable from ours.
+        private void BuildChildren(TreeViewItem parentItem, FbxNode fbxNode, int depth)
         {
             for (var i = 0; i < fbxNode.GetChildCount(); i++)
             {
@@ -66,11 +68,12 @@ namespace Percas.UnityTools.Fbx
                 var item = new FbxNodeTreeViewItem
                 {
                     id = id,
+                    depth = depth,
                     displayName = child.GetName(),
                     Node = child
                 };
                 parentItem.AddChild(item);
-                BuildChildren(item, child);
+                BuildChildren(item, child, depth + 1);
             }
         }
 
@@ -170,7 +173,7 @@ namespace Percas.UnityTools.Fbx
                 }
 
                 var oldPath = FbxNodeOperations.GetNodePath(node);
-                FbxNodeOperations.Reparent(_document.Scene, node, newParentNode, preserveWorldTransform: true);
+                FbxNodeOperations.Reparent(node, newParentNode, preserveWorldTransform: true);
                 var newPath = FbxNodeOperations.GetNodePath(node);
                 _document.RecordChange(FbxChangeKind.Reparented, oldPath, oldPath, newPath);
                 OnNodeReparented?.Invoke(node, newParentNode);

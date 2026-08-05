@@ -58,6 +58,13 @@ Unity version's registry offers.
   corruption, so Save is disabled rather than risking a silent bad write.
   Deleting/renaming a bone-like node, and vertex-editing a skinned mesh, both
   warn or block even outside that file-level check.
+- **Reparent's "preserve world transform" is an approximation**: this
+  package's `Autodesk.Fbx` binding doesn't expose the SDK's animation
+  evaluator, so global transforms are composed by hand from each ancestor's
+  local translation/rotation/scale — rotation/scaling pivots and pre/post-
+  rotation on ancestor nodes are not accounted for. Fine for the common case;
+  verify visually after reparenting a node whose ancestors have non-default
+  pivots.
 - **Weld is scoped-down in this version**: it merges control points and
   rebuilds polygon topology, but does **not** preserve the mesh's existing UV
   or per-polygon material layers — welded geometry gets a single default

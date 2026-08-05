@@ -84,12 +84,12 @@ namespace Percas.UnityTools.Fbx
         /// transform so it does not visually jump — reparenting keeps local
         /// values as-is otherwise, same as Unity's own Transform.SetParent(false).
         /// </summary>
-        public static void Reparent(FbxScene scene, FbxNode node, FbxNode newParent, bool preserveWorldTransform)
+        public static void Reparent(FbxNode node, FbxNode newParent, bool preserveWorldTransform)
         {
             FbxAMatrix globalBefore = default;
             if (preserveWorldTransform)
             {
-                globalBefore = scene.GetEvaluator().GetNodeGlobalTransform(node);
+                globalBefore = GetApproximateGlobalTransform(node);
             }
 
             node.GetParent()?.RemoveChild(node);
@@ -100,7 +100,7 @@ namespace Percas.UnityTools.Fbx
                 return;
             }
 
-            var newParentGlobal = scene.GetEvaluator().GetNodeGlobalTransform(newParent);
+            var newParentGlobal = GetApproximateGlobalTransform(newParent);
             var newLocal = newParentGlobal.Inverse() * globalBefore;
 
             node.LclTranslation.Set(ToDouble3(newLocal.GetT()));
@@ -114,6 +114,28 @@ namespace Percas.UnityTools.Fbx
             node.Destroy();
         }
 
+        /// <summary>
+        /// Composes local T*R*S up the parent chain by hand — this package's
+        /// Autodesk.Fbx binding does not expose FbxScene's animation evaluator,
+        /// which is what the SDK would normally use to account for rotation/
+        /// scaling pivots and pre/post-rotation too. Good enough to keep a
+        /// reparented node roughly in place for the common case; for a node
+        /// with non-default pivots the result can be slightly off — verify
+        /// visually after reparenting one of those.
+        /// </summary>
+        private static FbxAMatrix GetApproximateGlobalTransform(FbxNode node)
+        {
+            var local = new FbxAMatrix();
+            local.SetTRS(
+                ToVector4(node.LclTranslation.Get()),
+                ToVector4(node.LclRotation.Get()),
+                ToVector4(node.LclScaling.Get()));
+
+            var parent = node.GetParent();
+            return parent == null ? local : GetApproximateGlobalTransform(parent) * local;
+        }
+
         private static FbxDouble3 ToDouble3(FbxVector4 v) => new FbxDouble3(v.X, v.Y, v.Z);
+        private static FbxVector4 ToVector4(FbxDouble3 v) => new FbxVector4(v.X, v.Y, v.Z);
     }
 }
