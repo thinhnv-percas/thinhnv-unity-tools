@@ -5,7 +5,9 @@ using System.Collections.Generic;
 namespace MergeMeshUnity
 {
     public class MergeMeshWindow : EditorWindow
-    {   
+    {
+        private const string LastSaveFolderKey = "MergeMeshWindow_LastSaveFolder";
+
         public List<MeshFilter> meshFilters = new List<MeshFilter>();
         private SerializedObject serializedObject;
         private Vector2 listScroll;
@@ -114,7 +116,10 @@ namespace MergeMeshUnity
                     collider.sharedMesh = mesh;
                 }
 
-                string fileName = EditorUtility.SaveFilePanelInProject("Export mesh file", "mesh_" + name, "asset", "");
+                var lastFolder = EditorPrefs.GetString(LastSaveFolderKey, "Assets");
+                string fileName = EditorUtility.SaveFilePanelInProject("Export mesh file", "mesh_" + name, "asset", "", lastFolder);
+                if (string.IsNullOrEmpty(fileName)) return;
+                EditorPrefs.SetString(LastSaveFolderKey, System.IO.Path.GetDirectoryName(fileName));
                 AssetDatabase.CreateAsset(filter.sharedMesh, fileName);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
