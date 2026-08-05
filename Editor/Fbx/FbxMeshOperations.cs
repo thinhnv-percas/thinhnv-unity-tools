@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Autodesk.Fbx;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     public readonly struct FbxWeldResult
     {

@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// FBX editor: browse a .fbx file's node hierarchy and edit
@@ -22,7 +22,7 @@ namespace Percas.UnityTools.Fbx
             Mesh
         }
 
-        [MenuItem("Percas/Fbx Tools/Fbx Editor")]
+        [MenuItem("Thinhnv/Fbx Tools/Fbx Editor")]
         private static void ShowWindow()
         {
             GetWindow<FbxEditorWindow>("Fbx Editor");

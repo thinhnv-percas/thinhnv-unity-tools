@@ -2,7 +2,7 @@ using Autodesk.Fbx;
 using UnityEditor;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Right-pane inspector for the node currently selected in FbxNodeTreeView:

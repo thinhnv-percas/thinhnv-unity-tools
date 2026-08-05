@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     public class FbxNodeTreeViewItem : TreeViewItem
     {
@@ -18,7 +18,7 @@ namespace Percas.UnityTools.Fbx
     /// </summary>
     public class FbxNodeTreeView : TreeView
     {
-        private const string DragGenericDataKey = "Percas.FbxNodeTreeView.DraggedIds";
+        private const string DragGenericDataKey = "Thinhnv.FbxNodeTreeView.DraggedIds";
 
         private readonly FbxDocument _document;
         private readonly Dictionary<int, FbxNode> _nodesById = new Dictionary<int, FbxNode>();

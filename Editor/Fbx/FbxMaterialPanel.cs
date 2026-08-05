@@ -4,7 +4,7 @@ using Autodesk.Fbx;
 using UnityEditor;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Phase 2 inspector tab: for the selected node, one row per material slot

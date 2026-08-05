@@ -1,6 +1,6 @@
 using Autodesk.Fbx;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Stateless helpers for mutating an FbxNode's transform, pivot, name and

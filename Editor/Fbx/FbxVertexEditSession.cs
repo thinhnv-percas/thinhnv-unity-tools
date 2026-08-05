@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using Autodesk.Fbx;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Phase 3b: state for one SceneView vertex-editing session on a single

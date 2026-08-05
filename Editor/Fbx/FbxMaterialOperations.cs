@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using Autodesk.Fbx;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Phase 2: reassigning which FbxSurfaceMaterial a node's material slot

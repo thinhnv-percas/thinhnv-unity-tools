@@ -2,7 +2,7 @@ using Autodesk.Fbx;
 using UnityEditor;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Phase 3b: draws the selected node's mesh as a wireframe in the SceneView

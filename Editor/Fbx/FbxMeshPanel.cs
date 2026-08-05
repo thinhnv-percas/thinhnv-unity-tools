@@ -2,7 +2,7 @@ using Autodesk.Fbx;
 using UnityEditor;
 using UnityEngine;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Mesh inspector tab: a data-table view of control points (Phase 3a) plus

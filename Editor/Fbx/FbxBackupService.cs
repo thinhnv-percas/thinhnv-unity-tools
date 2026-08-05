@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Copies the source .fbx (and its .fbm embedded-media sidecar folder, if any)

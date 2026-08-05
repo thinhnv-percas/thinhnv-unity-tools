@@ -4,7 +4,7 @@ using System.IO;
 using Autodesk.Fbx;
 using UnityEditor;
 
-namespace Percas.UnityTools.Fbx
+namespace Thinhnv.UnityTools.Fbx
 {
     /// <summary>
     /// Owns the FbxManager/FbxScene pair for one open .fbx file. All FBX SDK
