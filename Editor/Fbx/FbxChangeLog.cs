@@ -9,7 +9,9 @@ namespace Percas.UnityTools.Fbx
         TransformChanged,
         PivotChanged,
         Reparented,
-        Deleted
+        Deleted,
+        MaterialChanged,
+        MeshChanged
     }
 
     public readonly struct FbxChangeEntry

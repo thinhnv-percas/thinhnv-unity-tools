@@ -7,12 +7,20 @@ using UnityEngine;
 namespace Percas.UnityTools.Fbx
 {
     /// <summary>
-    /// Phase 1 FBX editor: browse a .fbx file's node hierarchy and edit
-    /// transform/pivot/name/parenting, saving the changes back into the
-    /// original file (with an automatic backup) via FbxDocument.
+    /// FBX editor: browse a .fbx file's node hierarchy and edit
+    /// transform/pivot/name/parenting (Phase 1), material/texture assignment
+    /// (Phase 2) and mesh control points (Phase 3a), saving the changes back
+    /// into the original file (with an automatic backup) via FbxDocument.
     /// </summary>
     public class FbxEditorWindow : EditorWindow
     {
+        private enum Tab
+        {
+            Transform,
+            Material,
+            Mesh
+        }
+
         [MenuItem("Percas/Fbx Tools/Fbx Editor")]
         private static void ShowWindow()
         {
@@ -23,6 +31,9 @@ namespace Percas.UnityTools.Fbx
         private FbxNodeTreeView _treeView;
         private TreeViewState _treeViewState;
         private FbxTransformPanel _transformPanel;
+        private FbxMaterialPanel _materialPanel;
+        private FbxMeshPanel _meshPanel;
+        private Tab _activeTab;
         private Vector2 _rightPaneScroll;
 
         private void OnEnable()
@@ -31,6 +42,8 @@ namespace Percas.UnityTools.Fbx
             _treeViewState = new TreeViewState();
             _treeView = new FbxNodeTreeView(_treeViewState, _document);
             _transformPanel = new FbxTransformPanel(_document);
+            _materialPanel = new FbxMaterialPanel(_document);
+            _meshPanel = new FbxMeshPanel(_document);
         }
 
         private void OnDisable()
@@ -57,10 +70,25 @@ namespace Percas.UnityTools.Fbx
             EditorGUILayout.EndVertical();
 
             EditorGUILayout.BeginVertical();
+            _activeTab = (Tab)GUILayout.Toolbar((int)_activeTab, new[] { "Transform", "Material", "Mesh" });
+
             _rightPaneScroll = EditorGUILayout.BeginScrollView(_rightPaneScroll);
             var selection = _treeView.GetSelection();
             var selectedNode = selection.Count > 0 ? _treeView.GetNode(selection[0]) : null;
-            _transformPanel.Draw(selectedNode);
+
+            switch (_activeTab)
+            {
+                case Tab.Material:
+                    _materialPanel.Draw(selectedNode);
+                    break;
+                case Tab.Mesh:
+                    _meshPanel.Draw(selectedNode);
+                    break;
+                default:
+                    _transformPanel.Draw(selectedNode);
+                    break;
+            }
+
             EditorGUILayout.EndScrollView();
             EditorGUILayout.EndVertical();
 
