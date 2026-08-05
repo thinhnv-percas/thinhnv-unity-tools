@@ -36,6 +36,7 @@ namespace Thinhnv.UnityTools.Fbx
         private FbxMeshPanel _meshPanel;
         private Tab _activeTab;
         private Vector2 _rightPaneScroll;
+        private UnityEngine.Object _pickedAsset;
 
         private void OnEnable()
         {
@@ -57,11 +58,13 @@ namespace Thinhnv.UnityTools.Fbx
         {
             HandleFileDrop();
             DrawToolbar();
+            DrawAssetPicker();
 
             if (!_document.IsOpen)
             {
                 EditorGUILayout.HelpBox(
-                    "Drag an .fbx file here (from Windows Explorer or the Project window) or use Open...",
+                    "Drag an .fbx file here (from Windows Explorer or the Project window), pick a " +
+                    "Mesh/Model asset above, or use Open...",
                     MessageType.Info);
             }
             else if (_document.IsSaveBlocked)
@@ -145,6 +148,38 @@ namespace Thinhnv.UnityTools.Fbx
         }
 
         /// <summary>
+        /// Lets you pick a Mesh, model prefab, or any other sub-asset of an
+        /// imported .fbx directly via Unity's asset picker instead of dragging —
+        /// AssetDatabase.GetAssetPath resolves any of those back to the
+        /// containing .fbx file's path.
+        /// </summary>
+        private void DrawAssetPicker()
+        {
+            EditorGUILayout.BeginHorizontal();
+            GUILayout.Label("Open from asset:", GUILayout.Width(90));
+            EditorGUI.BeginChangeCheck();
+            _pickedAsset = EditorGUILayout.ObjectField(_pickedAsset, typeof(UnityEngine.Object), false);
+            if (EditorGUI.EndChangeCheck() && _pickedAsset != null)
+            {
+                OpenFromAsset(_pickedAsset);
+                _pickedAsset = null;
+            }
+            EditorGUILayout.EndHorizontal();
+        }
+
+        private void OpenFromAsset(UnityEngine.Object asset)
+        {
+            if (TryResolveFbxPath(asset, out var path))
+            {
+                OpenFileAtPath(path);
+            }
+            else
+            {
+                EditorUtility.DisplayDialog("Fbx Editor", "That asset is not part of an .fbx file.", "OK");
+            }
+        }
+
+        /// <summary>
         /// Accepts an .fbx dragged in either as a raw OS file (DragAndDrop.paths,
         /// e.g. from Windows Explorer) or as a Unity asset reference
         /// (DragAndDrop.objectReferences, e.g. from the Project window).
@@ -186,18 +221,54 @@ namespace Thinhnv.UnityTools.Fbx
 
             foreach (var obj in DragAndDrop.objectReferences)
             {
-                var assetPath = AssetDatabase.GetAssetPath(obj);
-                if (!string.IsNullOrEmpty(assetPath) && IsFbxPath(assetPath))
+                if (TryResolveFbxPath(obj, out var path))
                 {
-                    return Path.GetFullPath(assetPath);
+                    return path;
                 }
             }
 
             return null;
         }
 
+        /// <summary>
+        /// Resolves any Unity asset reference to its containing .fbx's full
+        /// path — works for the model's root GameObject/prefab and for any of
+        /// its sub-assets (Mesh, Material, AnimationClip, Avatar...), since
+        /// AssetDatabase.GetAssetPath returns the main asset's path for all of them.
+        /// </summary>
+        private static bool TryResolveFbxPath(UnityEngine.Object asset, out string path)
+        {
+            path = null;
+            if (asset == null)
+            {
+                return false;
+            }
+
+            var assetPath = AssetDatabase.GetAssetPath(asset);
+            if (string.IsNullOrEmpty(assetPath) || !IsFbxPath(assetPath))
+            {
+                return false;
+            }
+
+            path = Path.GetFullPath(assetPath);
+            return true;
+        }
+
         private static bool IsFbxPath(string path) =>
             string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase);
+
+        [MenuItem("Assets/Thinhnv/Open in Fbx Editor")]
+        private static void OpenSelectedInFbxEditor()
+        {
+            var window = GetWindow<FbxEditorWindow>("Fbx Editor");
+            window.OpenFromAsset(Selection.activeObject);
+        }
+
+        [MenuItem("Assets/Thinhnv/Open in Fbx Editor", true)]
+        private static bool ValidateOpenSelectedInFbxEditor()
+        {
+            return TryResolveFbxPath(Selection.activeObject, out _);
+        }
 
         private void OpenFile()
         {
