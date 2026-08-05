@@ -165,7 +165,19 @@ namespace Percas.UnityTools.Fbx
 
         private void ScanRiskyContent()
         {
-            HasAnimation = _scene.GetSrcObjectCount<FbxAnimStack>() > 0;
+            // GetSrcObjectCount/GetSrcObject have no generic <T> overload in this
+            // SDK binding — they return the untyped connection list, so filter with `is`.
+            HasAnimation = false;
+            var srcCount = _scene.GetSrcObjectCount();
+            for (var i = 0; i < srcCount; i++)
+            {
+                if (_scene.GetSrcObject(i) is FbxAnimStack)
+                {
+                    HasAnimation = true;
+                    break;
+                }
+            }
+
             HasSkinning = false;
             HasBlendShapes = false;
 

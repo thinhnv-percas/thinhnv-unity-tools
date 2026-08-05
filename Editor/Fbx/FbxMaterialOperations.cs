@@ -7,24 +7,33 @@ namespace Percas.UnityTools.Fbx
     /// <summary>
     /// Phase 2: reassigning which FbxSurfaceMaterial a node's material slot
     /// points to, and which texture file a material's diffuse channel uses.
+    ///
+    /// GetSrcObjectCount()/GetSrcObject(int) have no generic &lt;T&gt; overload in
+    /// this SDK binding — they return the untyped connection list, so every
+    /// lookup here filters the result with `is`/`as` instead.
     /// </summary>
     public static class FbxMaterialOperations
     {
         public static List<FbxSurfaceMaterial> GetSceneMaterials(FbxScene scene)
         {
-            var count = scene.GetSrcObjectCount<FbxSurfaceMaterial>();
-            var list = new List<FbxSurfaceMaterial>(count);
+            var list = new List<FbxSurfaceMaterial>();
+            var count = scene.GetSrcObjectCount();
             for (var i = 0; i < count; i++)
             {
-                list.Add(scene.GetSrcObject<FbxSurfaceMaterial>(i));
+                if (scene.GetSrcObject(i) is FbxSurfaceMaterial material)
+                {
+                    list.Add(material);
+                }
             }
             return list;
         }
 
         /// <summary>
-        /// FbxNode has no direct "replace slot N" setter, so this rebuilds the
-        /// node's material list from scratch with the target slot swapped —
-        /// AddMaterial only appends, and there is no SetMaterial(index, ...).
+        /// FbxNode has no direct "replace slot N" setter and no RemoveMaterial
+        /// convenience method, so this rebuilds the node's material list from
+        /// scratch: disconnect everything via the generic object connection
+        /// (DisconnectSrcObject, the same connection AddMaterial creates), then
+        /// re-add in order with the target slot swapped.
         /// </summary>
         public static void SetMaterialSlot(FbxNode node, int slotIndex, FbxSurfaceMaterial newMaterial)
         {
@@ -39,7 +48,7 @@ namespace Percas.UnityTools.Fbx
 
             while (node.GetMaterialCount() > 0)
             {
-                node.RemoveMaterial(node.GetMaterial(0));
+                node.DisconnectSrcObject(node.GetMaterial(0));
             }
 
             foreach (var material in materials)
@@ -60,7 +69,12 @@ namespace Percas.UnityTools.Fbx
                 return null;
             }
 
-            var texture = lambert.Diffuse.GetSrcObject<FbxFileTexture>(0);
+            if (lambert.Diffuse.GetSrcObjectCount() == 0)
+            {
+                return null;
+            }
+
+            var texture = lambert.Diffuse.GetSrcObject(0) as FbxFileTexture;
             return texture?.GetFileName();
         }
 
@@ -71,7 +85,10 @@ namespace Percas.UnityTools.Fbx
                 return;
             }
 
-            var texture = lambert.Diffuse.GetSrcObject<FbxFileTexture>(0);
+            var texture = lambert.Diffuse.GetSrcObjectCount() > 0
+                ? lambert.Diffuse.GetSrcObject(0) as FbxFileTexture
+                : null;
+
             if (texture == null)
             {
                 texture = FbxFileTexture.Create(scene, material.GetName() + "_DiffuseTexture");

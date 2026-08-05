@@ -89,7 +89,7 @@ namespace Percas.UnityTools.Fbx
             FbxAMatrix globalBefore = default;
             if (preserveWorldTransform)
             {
-                globalBefore = scene.GetAnimationEvaluator().GetNodeGlobalTransform(node);
+                globalBefore = scene.GetEvaluator().GetNodeGlobalTransform(node);
             }
 
             node.GetParent()?.RemoveChild(node);
@@ -100,7 +100,7 @@ namespace Percas.UnityTools.Fbx
                 return;
             }
 
-            var newParentGlobal = scene.GetAnimationEvaluator().GetNodeGlobalTransform(newParent);
+            var newParentGlobal = scene.GetEvaluator().GetNodeGlobalTransform(newParent);
             var newLocal = newParentGlobal.Inverse() * globalBefore;
 
             node.LclTranslation.Set(ToDouble3(newLocal.GetT()));

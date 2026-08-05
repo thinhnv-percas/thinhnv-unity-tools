@@ -51,7 +51,7 @@ namespace Percas.UnityTools.Fbx
                 root.AddChild(new TreeViewItem { id = 0, displayName = "(no file open)" });
             }
 
-            TreeViewUtility.SetupDepthsFromParentsAndChildren(root);
+            TreeViewUtility<int>.SetupDepthsFromParentsAndChildren(root);
             return root;
         }
 
