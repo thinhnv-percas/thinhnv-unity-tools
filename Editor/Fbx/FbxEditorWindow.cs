@@ -9,7 +9,7 @@ namespace Percas.UnityTools.Fbx
     /// <summary>
     /// FBX editor: browse a .fbx file's node hierarchy and edit
     /// transform/pivot/name/parenting (Phase 1), material/texture assignment
-    /// (Phase 2) and mesh control points (Phase 3a), saving the changes back
+    /// (Phase 2) and mesh control points via table or SceneView (Phase 3a/3b), saving the changes back
     /// into the original file (with an automatic backup) via FbxDocument.
     /// </summary>
     public class FbxEditorWindow : EditorWindow
@@ -48,6 +48,7 @@ namespace Percas.UnityTools.Fbx
 
         private void OnDisable()
         {
+            _meshPanel?.Dispose();
             _document?.Close();
         }
 
