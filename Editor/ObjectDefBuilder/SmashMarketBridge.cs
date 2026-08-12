@@ -42,6 +42,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         public const string PropObjectCollider = "objectCollider";
         public const string PropPieceRigidbodies = "pieceRigidbodies";
 
+        private const string MethodBakeMeshIntoWrapper = "BakeMeshIntoWrapper";
+
         private static readonly Dictionary<string, Type> TypeCache = new Dictionary<string, Type>();
 
         public static Type ObjectDefinitionType => Resolve(ObjectDefinitionTypeName);
@@ -149,6 +151,36 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                                    "matching BuildAxis; add it to the tool's enum.");
                 }
             }
+        }
+
+        /// <summary>
+        /// Invoke <c>ObjectElement.BakeMeshIntoWrapper()</c> on <paramref name="prefab"/>'s ObjectElement,
+        /// exactly as its context menu entry would. False when the prefab carries no ObjectElement.
+        /// </summary>
+        public static bool BakeMeshIntoWrapper(GameObject prefab)
+        {
+            Type type = ObjectElementType;
+            if (type == null || prefab == null)
+            {
+                return false;
+            }
+
+            Component element = prefab.GetComponentInChildren(type, true);
+            if (element == null)
+            {
+                return false;
+            }
+
+            MethodInfo method = type.GetMethod(MethodBakeMeshIntoWrapper);
+            if (method == null)
+            {
+                Debug.LogError($"[ObjectDefBuilder] '{ObjectElementTypeName}.{MethodBakeMeshIntoWrapper}' " +
+                               "not found - has it been renamed?");
+                return false;
+            }
+
+            method.Invoke(element, null);
+            return true;
         }
 
         private static Type Resolve(string name)

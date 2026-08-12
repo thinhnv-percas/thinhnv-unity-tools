@@ -68,6 +68,102 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         Shared = 2,
     }
 
+    /// <summary>Which axis-aligned face a decal's local position places it on.</summary>
+    public enum DecalDirection
+    {
+        PosX = 0, NegX = 1, PosY = 2, NegY = 3, PosZ = 4, NegZ = 5,
+    }
+
+    /// <summary>
+    /// The hand-authored local rotation (Euler) a face's decal is set to when building each of the three
+    /// Bar-family axis variants. One instance per face, so the full table is 6 faces x 3 axes.
+    /// </summary>
+    [Serializable]
+    public class DecalFaceRotations
+    {
+        [Tooltip("This decal's local rotation in the generated X-axis variant.")]
+        public Vector3 whenX = Vector3.zero;
+
+        [Tooltip("This decal's local rotation in the generated Y-axis variant.")]
+        public Vector3 whenY = Vector3.zero;
+
+        [Tooltip("This decal's local rotation in the generated Z-axis variant.")]
+        public Vector3 whenZ = Vector3.zero;
+
+        /// <summary>The authored rotation for <paramref name="axis"/>, or zero for anything but X/Y/Z.</summary>
+        public Vector3 For(BuildAxis axis) => axis switch
+        {
+            BuildAxis.X => whenX,
+            BuildAxis.Y => whenY,
+            BuildAxis.Z => whenZ,
+            _ => Vector3.zero,
+        };
+    }
+
+    /// <summary>
+    /// Per-direction data used to keep a decal submesh readable across axis variants. Each direction
+    /// names the one decal object that sits on that face of the base model - cached by
+    /// <see cref="AxisVariantFactory.CacheDecalNames"/> right after the base is built from its source FBX,
+    /// by checking every decal's local position - and carries the local rotation that decal is set to for
+    /// each of the three Bar-family axis variants (see <see cref="DecalFaceRotations"/>), hand-authored
+    /// rather than derived, since the whole-model rotation's effect on a decal's own readability isn't
+    /// reliably predictable from a single swing/twist formula. Building an axis variant finds each named
+    /// decal by name directly, in both the base and the variant, instead of re-detecting its face or
+    /// relying on the two hierarchies lining up node-for-node.
+    /// </summary>
+    [Serializable]
+    public class DecalCompensationAxes
+    {
+        [Tooltip("Name of the decal object on this face, cached from the base model - see " +
+                 "AxisVariantFactory.CacheDecalNames. Empty means no decal on that face.")]
+        public string name_posX = "Right";
+        public string name_negX = "Right1";
+        public string name_posY = "Up";
+        public string name_negY = "Up1";
+        public string name_posZ = "Forward";
+        public string name_negZ = "Forward1";
+
+        public DecalFaceRotations posX = new DecalFaceRotations();
+        public DecalFaceRotations negX = new DecalFaceRotations();
+        public DecalFaceRotations posY = new DecalFaceRotations();
+        public DecalFaceRotations negY = new DecalFaceRotations();
+        public DecalFaceRotations posZ = new DecalFaceRotations();
+        public DecalFaceRotations negZ = new DecalFaceRotations();
+
+        public string Name(DecalDirection direction) => direction switch
+        {
+            DecalDirection.PosX => name_posX,
+            DecalDirection.NegX => name_negX,
+            DecalDirection.PosY => name_posY,
+            DecalDirection.NegY => name_negY,
+            DecalDirection.PosZ => name_posZ,
+            _ => name_negZ,
+        };
+
+        public void SetName(DecalDirection direction, string value)
+        {
+            switch (direction)
+            {
+                case DecalDirection.PosX: name_posX = value; break;
+                case DecalDirection.NegX: name_negX = value; break;
+                case DecalDirection.PosY: name_posY = value; break;
+                case DecalDirection.NegY: name_negY = value; break;
+                case DecalDirection.PosZ: name_posZ = value; break;
+                default: name_negZ = value; break;
+            }
+        }
+
+        public DecalFaceRotations Rotations(DecalDirection direction) => direction switch
+        {
+            DecalDirection.PosX => posX,
+            DecalDirection.NegX => negX,
+            DecalDirection.PosY => posY,
+            DecalDirection.NegY => negY,
+            DecalDirection.PosZ => posZ,
+            _ => negZ,
+        };
+    }
+
     /// <summary>
     /// How a per-size material is produced from a row's texture: a shader to build it on, the texture
     /// property that receives the texture, and an optional template to copy every other property from.

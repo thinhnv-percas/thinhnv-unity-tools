@@ -41,14 +41,21 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 using (new EditorGUI.DisabledScope(!HasAnyBakeTarget(entry)))
                 {
                     var bake = new GUIContent("Bake Meshes",
-                        "Flatten every already-built object prefab of this entry. Runs off the cached " +
-                        "prefabs, so no rebuild is needed.");
+                        "Run ObjectElement.BakeMeshIntoWrapper() on every already-built object prefab of " +
+                        "this entry. Runs off the cached prefabs, so no rebuild is needed.");
                     if (GUILayout.Button(bake, GUILayout.Height(32), GUILayout.Width(110)))
                     {
                         RequestBake(entry);
                     }
                 }
             }
+
+            entry.bakeBaseModel = EditorGUILayout.ToggleLeft(
+                new GUIContent("Bake Base Model",
+                    "Also bake each family's '_ModelBase' prefab. It is only an authoring template the " +
+                    "axis variants are derived from - never spawned on its own - so this is usually " +
+                    "unnecessary; off only skips that prefab, the uniform and every axis variant still bake."),
+                entry.bakeBaseModel, GUILayout.Width(150));
 
             if (string.IsNullOrWhiteSpace(entry.modelPrefix))
             {

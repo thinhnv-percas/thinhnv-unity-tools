@@ -94,6 +94,24 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             _ => Quaternion.identity,
         };
 
+        /// <summary>Unit direction of a single Bar axis (X/Y/Z only - Y for any other value).</summary>
+        public static Vector3 AxisVector(BuildAxis axis) => axis switch
+        {
+            BuildAxis.X => Vector3.right,
+            BuildAxis.Z => Vector3.forward,
+            _ => Vector3.up,
+        };
+
+        /// <summary>
+        /// Rotation that turns a Bar model actually authored along <paramref name="authoredAxis"/> onto
+        /// <paramref name="target"/>, generalizing <see cref="Rotation"/> for source models not authored
+        /// along Y. The two agree exactly when <paramref name="authoredAxis"/> is Y, since a Bar model has
+        /// a square cross-section - the roll around the long axis does not matter, so the shortest
+        /// rotation between the two direction vectors is enough.
+        /// </summary>
+        public static Quaternion BarRotation(BuildAxis authoredAxis, BuildAxis target) =>
+            Quaternion.FromToRotation(AxisVector(authoredAxis), AxisVector(target));
+
         /// <summary>
         /// The level-data size vector this (axis, magnitude) stands for.
         /// Bar: X=(m,1,1), Y=(1,m,1), Z=(1,1,m).

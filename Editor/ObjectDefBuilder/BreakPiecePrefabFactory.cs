@@ -127,7 +127,8 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             int magnitude, BuildAxis axis)
         {
             return AxisVariantFactory.CreateOrRefresh(basePrefab, entry.prefabFolder,
-                ObjectDefNaming.BreakPiecePrefab(entry, magnitude, axis), axis, entry.overwritePrefabs);
+                ObjectDefNaming.BreakPiecePrefab(entry, magnitude, axis), axis, entry.overwritePrefabs,
+                entry.BarRotationOverride(axis));
         }
 
         /// <summary>

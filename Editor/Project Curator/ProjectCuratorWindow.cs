@@ -73,6 +73,7 @@ namespace Ogxd.ProjectCurator
 
         private bool dependenciesOpen = true;
         private bool referencesOpen = true;
+        private string highlightedAssetGuid;
 
         private static GUIStyle titleStyle;
         private static GUIStyle TitleStyle =>
@@ -207,7 +208,7 @@ namespace Ogxd.ProjectCurator
 
             if (dependenciesOpen)
             {
-                foreach (var dependency in selectedAssetInfo.dependencies)
+                foreach (var dependency in GetSortedAssetGuids(selectedAssetInfo.dependencies))
                     RenderOtherAsset(dependency);
             }
 
@@ -222,7 +223,7 @@ namespace Ogxd.ProjectCurator
 
             if (referencesOpen)
             {
-                foreach (var referencer in selectedAssetInfo.referencers)
+                foreach (var referencer in GetSortedAssetGuids(selectedAssetInfo.referencers))
                     RenderOtherAsset(referencer);
             }
 
@@ -249,22 +250,51 @@ namespace Ogxd.ProjectCurator
             }
         }
 
+        private System.Collections.Generic.List<string> GetSortedAssetGuids(System.Collections.Generic.IEnumerable<string> guids)
+        {
+            var sortedGuids = new System.Collections.Generic.List<string>(guids);
+            sortedGuids.Sort((a, b) =>
+            {
+                string aName = Path.GetFileName(AssetDatabase.GUIDToAssetPath(a)) ?? a;
+                string bName = Path.GetFileName(AssetDatabase.GUIDToAssetPath(b)) ?? b;
+                return string.Compare(aName, bName, System.StringComparison.OrdinalIgnoreCase);
+            });
+
+            return sortedGuids;
+        }
+
         // =========================================================
         // RENDER DEPENDENCY / REFERENCER ITEM
         // =========================================================
         void RenderOtherAsset(string guid)
         {
             var path = AssetDatabase.GUIDToAssetPath(guid);
+            var selectedPath = AssetDatabase.GetAssetPath(Selection.activeObject);
+            bool isActiveAsset = string.Equals(guid, highlightedAssetGuid, System.StringComparison.Ordinal) ||
+                string.Equals(path, selectedPath, System.StringComparison.Ordinal);
+
+            GUIStyle rowStyle = new GUIStyle(ItemStyle);
+            if (isActiveAsset)
+            {
+                rowStyle.fontStyle = FontStyle.Bold;
+                rowStyle.normal.textColor = new Color(0.18f, 0.48f, 0.95f);
+            }
 
             if (GUILayout.Button(
                 new GUIContent(Path.GetFileName(path), path),
-                ItemStyle))
+                rowStyle))
             {
-                Selection.activeObject =
-                    AssetDatabase.LoadAssetAtPath<Object>(path);
+                SelectAssetAndPing(path, guid);
             }
 
             var rect = GUILayoutUtility.GetLastRect();
+
+            if (isActiveAsset)
+            {
+                EditorGUI.DrawRect(
+                    new Rect(rect.x, rect.y, rect.width, rect.height),
+                    new Color(0.12f, 0.38f, 0.82f, 0.15f));
+            }
 
             GUI.DrawTexture(
                 new Rect(rect.x - 16, rect.y, rect.height, rect.height),
@@ -281,6 +311,18 @@ namespace Ogxd.ProjectCurator
             GUI.Label(
                 new Rect(rect.width + rect.x - 20, rect.y + 1, 16, 16),
                 content);
+        }
+
+        private void SelectAssetAndPing(string path, string guid)
+        {
+            Object asset = AssetDatabase.LoadAssetAtPath<Object>(path);
+            if (asset == null)
+                return;
+
+            highlightedAssetGuid = guid;
+            Selection.activeObject = asset;
+            EditorGUIUtility.PingObject(asset);
+            EditorUtility.FocusProjectWindow();
         }
 
         void IHasCustomMenu.AddItemsToMenu(GenericMenu menu)

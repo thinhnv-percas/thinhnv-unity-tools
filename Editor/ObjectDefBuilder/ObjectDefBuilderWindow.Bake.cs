@@ -5,8 +5,10 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.ObjectDefBuilder
 {
     /// <summary>
-    /// Baking as a standalone action: flatten already-built prefabs into baked meshes without a full
-    /// rebuild. Works off the prefabs the cache points at, regardless of the bake toggles.
+    /// Baking as a standalone action: run <c>ObjectElement.BakeMeshIntoWrapper()</c> (via
+    /// <see cref="SmashMarketBridge"/>) over every already-built prefab a row points at, without a full
+    /// rebuild. Works off the prefabs the cache points at - the base per family and every axis variant,
+    /// each baked independently since ObjectElement's own bake handles variants directly.
     /// </summary>
     public partial class ObjectDefBuilderWindow
     {
@@ -47,7 +49,7 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             string scope = onlyMagnitude > 0 ? $"size {onlyMagnitude}" : "all sizes";
             string skippedNote = skipped > 0
-                ? $" {skipped} skipped (variants are baked through their base - see the Console)."
+                ? $" {skipped} skipped (no ObjectElement on the prefab)."
                 : string.Empty;
 
             status = baked == 0
@@ -58,15 +60,9 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
         private void BakeRow(ObjectDefBuildEntry entry, ObjectDefBuildRow row, ref int baked, ref int skipped)
         {
-            if (row.magnitude > 1 && entry.bakeMeshPerAxis)
+            foreach (GameObject prefab in RowPrefabs(entry, row))
             {
-                BakeAllFamilies(entry, row, ref baked, ref skipped);
-                return;
-            }
-
-            foreach (GameObject prefab in SizePrefabs(row))
-            {
-                if (MeshBakeFactory.Bake(entry, prefab) != null)
+                if (SmashMarketBridge.BakeMeshIntoWrapper(prefab))
                 {
                     Track(lastBuilt, prefab);
                     baked++;
@@ -78,78 +74,22 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             }
         }
 
-        private void BakeAllFamilies(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            ref int baked, ref int skipped)
-        {
-            foreach (BuildAxisFamily family in AllFamilies)
-            {
-                GameObject basePrefab = row.FamilyModelBasePrefab(family);
-                if (basePrefab == null)
-                {
-                    continue;
-                }
-
-                Mesh baseMesh = null;
-                bool scratchMesh = false;
-
-                if (entry.bakeBaseMesh)
-                {
-                    baseMesh = MeshBakeFactory.Bake(entry, basePrefab);
-                    if (baseMesh != null)
-                    {
-                        Track(lastBuilt, basePrefab);
-                        baked++;
-                    }
-                    else
-                    {
-                        skipped++;
-                    }
-                }
-                else
-                {
-                    baseMesh = MeshBakeFactory.CombineFrom(entry, basePrefab);
-                    scratchMesh = baseMesh != null;
-                }
-
-                try
-                {
-                    if (baseMesh != null)
-                    {
-                        BakeAxes(entry, row, baseMesh, BuildAxisExtensions.FamilyAxes(family), ref baked);
-                    }
-                }
-                finally
-                {
-                    if (scratchMesh)
-                    {
-                        Object.DestroyImmediate(baseMesh);
-                    }
-                }
-            }
-        }
-
-        private void BakeAxes(ObjectDefBuildEntry entry, ObjectDefBuildRow row, Mesh baseMesh,
-            BuildAxis[] axes, ref int baked)
-        {
-            foreach (BuildAxis axis in axes)
-            {
-                GameObject variant = row.ModelPrefabFor(axis);
-                if (variant != null && MeshBakeFactory.BakeAxis(entry, row, variant, baseMesh, axis))
-                {
-                    Track(lastBuilt, variant);
-                    baked++;
-                }
-            }
-        }
-
-        private static IEnumerable<GameObject> SizePrefabs(ObjectDefBuildRow row)
+        /// <summary>
+        /// Every prefab this row currently has built: the uniform, each axis variant, and - when
+        /// <see cref="ObjectDefBuildEntry.bakeBaseModel"/> is on - each family's base prefab too.
+        /// </summary>
+        private static IEnumerable<GameObject> RowPrefabs(ObjectDefBuildEntry entry, ObjectDefBuildRow row)
         {
             var seen = new List<GameObject>();
 
-            if (row.magnitude <= 1)
+            Add(seen, row.ModelPrefabFor(BuildAxis.None));
+
+            if (entry.bakeBaseModel)
             {
-                Add(seen, row.ModelPrefabFor(BuildAxis.None));
-                return seen;
+                foreach (BuildAxisFamily family in AllFamilies)
+                {
+                    Add(seen, row.FamilyModelBasePrefab(family));
+                }
             }
 
             foreach (BuildAxis axis in BuildAxisExtensions.All)

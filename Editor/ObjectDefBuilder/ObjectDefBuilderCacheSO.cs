@@ -68,10 +68,42 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
         [Tooltip("Applied to the fractured model before its pieces are extracted; the shipped prefabs use Y 180.")]
         public Vector3 breakRotation = new Vector3(0f, 180f, 0f);
 
+        [Tooltip("The axis the Bar family's source model (and break source) is actually authored along. " +
+                 "Default Y matches the existing convention; change this if your FBX's long dimension " +
+                 "runs along X or Z instead, so the X/Y/Z axis variants still rotate onto the right axis. " +
+                 "Bar family only - Plate and Cube keep their own fixed convention.")]
+        public BuildAxis barAuthoredAxis = BuildAxis.Y;
+
+        /// <summary>
+        /// The rotation override for a Bar-family axis variant when the source isn't authored along Y, or
+        /// null to fall back to the canonical <see cref="BuildAxisExtensions.Rotation"/>.
+        /// </summary>
+        public Quaternion? BarRotationOverride(BuildAxis axis) =>
+            barAuthoredAxis != BuildAxis.Y && BuildAxisExtensions.Family(axis) == BuildAxisFamily.Bar
+                ? BuildAxisExtensions.BarRotation(barAuthoredAxis, axis)
+                : (Quaternion?)null;
+
         [Tooltip("Insert a child GameObject that carries the collider and holds the 3D model, " +
                  "as the shipped object prefabs do. The wrapper also takes the Model Rotation, so the " +
                  "convex mesh stays aligned with what you see.")]
         public bool useWrapper = true;
+
+        [Tooltip("Insert a pivot parent above every MeshRenderer inside the model, the same pivot -> piece " +
+                 "pairing the break pieces use - one pivot per renderer, carrying its pose so the renderer " +
+                 "itself sits at local identity. Independent of Use Wrapper. Needs Unpack Model on; " +
+                 "skipped with a warning otherwise, since a packed nested prefab instance can't be " +
+                 "restructured safely.")]
+        public bool useRendererWrapper;
+
+        [Tooltip("Axis variants rotate the whole model, including any decal submesh (a MeshRenderer " +
+                 "nested under another MeshRenderer - a sticker glued onto the main mesh). Turn this on to " +
+                 "cancel, per decal, the twist its face's compensation axis picks up from the axis " +
+                 "variant's rotation - see Decal Compensation Axes. Only applies to RotateBase axis variants.")]
+        public bool keepDecalRotation;
+
+        [Tooltip("Per-face compensation axis a decal's twist is cancelled around, keyed by which side of " +
+                 "the model the decal's local position places it on.")]
+        public DecalCompensationAxes decalCompensationAxes = new DecalCompensationAxes();
 
         [Tooltip("Group every piece pivot under one wrapper child of the shatter root, mirroring the object " +
                  "prefab. The wrapper carries no collider or other component - it only groups, so an axis " +
@@ -101,21 +133,10 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                  "only - and the rest is left as the last build cached it.")]
         public BuildTargets buildTargets = BuildTargets.All;
 
-        [Header("Mesh Bake")]
-        [Tooltip("Flatten the '<prefix>_<n>_ModelBase' prefab's model hierarchy into one baked mesh. " +
-                 "In RotateBase mode the axis variants inherit it, so this is the one to use there.")]
-        public bool bakeBaseMesh;
-
-        [Tooltip("Flatten the size prefabs themselves - the uniform 1x1 and each axis prefab. " +
-                 "Skipped with a warning for axis prefabs that are variants of a base, since a variant " +
-                 "cannot delete the hierarchy it inherits.")]
-        public bool bakeSizeMesh;
-
-        [Tooltip("Give each axis variant its own baked mesh with the axis rotation baked into the " +
-                 "vertices, instead of all three sharing the base's mesh and rotating their wrapper. " +
-                 "The variant stays a variant - it just overrides the mesh reference and drops the " +
-                 "wrapper rotation. Needs Bake Base Mesh, and only applies in RotateBase mode.")]
-        public bool bakeMeshPerAxis;
+        [Tooltip("Whether Bake / Bake Meshes also bakes each family's '_ModelBase' prefab, in addition to " +
+                 "the uniform 1x1 and every axis variant. The base is only an authoring template the " +
+                 "variants are derived from - never spawned on its own - so this is usually unnecessary.")]
+        public bool bakeBaseModel = true;
 
         /// <summary>True when a build run should write <paramref name="target"/>.</summary>
         public bool Builds(BuildTargets target) => (buildTargets & target) != 0;

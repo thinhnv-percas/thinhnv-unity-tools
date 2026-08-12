@@ -103,53 +103,5 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             BuildAxis.XYZ => breakPieceXYZ,
             _ => breakPieceX,
         };
-
-        [Header("Rotation already baked into each axis mesh")]
-        public Quaternion bakedRotationX;
-        public Quaternion bakedRotationY;
-        public Quaternion bakedRotationZ;
-        public Quaternion bakedRotationXY;
-        public Quaternion bakedRotationYZ;
-        public Quaternion bakedRotationXZ;
-        public Quaternion bakedRotationXYZ;
-
-        public Quaternion BakedRotationFor(BuildAxis axis)
-        {
-            Quaternion stored = RawBakedRotation(axis);
-            return HasBakedRotation(axis) ? stored : Quaternion.identity;
-        }
-
-        public bool HasBakedRotation(BuildAxis axis)
-        {
-            Quaternion stored = RawBakedRotation(axis);
-            return stored.x != 0f || stored.y != 0f || stored.z != 0f || stored.w != 0f;
-        }
-
-        public void SetBakedRotation(BuildAxis axis, Quaternion rotation)
-        {
-            switch (axis)
-            {
-                case BuildAxis.X: bakedRotationX = rotation; break;
-                case BuildAxis.Y: bakedRotationY = rotation; break;
-                case BuildAxis.Z: bakedRotationZ = rotation; break;
-                case BuildAxis.XY: bakedRotationXY = rotation; break;
-                case BuildAxis.YZ: bakedRotationYZ = rotation; break;
-                case BuildAxis.XZ: bakedRotationXZ = rotation; break;
-                case BuildAxis.XYZ: bakedRotationXYZ = rotation; break;
-                default: bakedRotationX = rotation; break;
-            }
-        }
-
-        private Quaternion RawBakedRotation(BuildAxis axis) => axis switch
-        {
-            BuildAxis.X => bakedRotationX,
-            BuildAxis.Y => bakedRotationY,
-            BuildAxis.Z => bakedRotationZ,
-            BuildAxis.XY => bakedRotationXY,
-            BuildAxis.YZ => bakedRotationYZ,
-            BuildAxis.XZ => bakedRotationXZ,
-            BuildAxis.XYZ => bakedRotationXYZ,
-            _ => bakedRotationX,
-        };
     }
 }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -30,6 +31,8 @@ namespace MergeMeshUnity
             public bool createCollider = true;
             public bool reprojectNormals = true;
             public bool recalculateTangents = false;
+            public bool removeHiddenFaces = false;
+            public float hiddenFaceDistance = 0.01f;
         }
 
         public List<MeshFilter> meshFilters = new List<MeshFilter>();
@@ -134,6 +137,15 @@ namespace MergeMeshUnity
             this.settings.reprojectNormals = EditorGUILayout.Toggle("Recalculate Normals", this.settings.reprojectNormals);
             this.settings.recalculateTangents = EditorGUILayout.Toggle("Recalculate Tangents", this.settings.recalculateTangents);
 
+            EditorGUILayout.Space(4);
+            this.settings.removeHiddenFaces = EditorGUILayout.Toggle("Remove Hidden Faces", this.settings.removeHiddenFaces);
+            if (this.settings.removeHiddenFaces)
+            {
+                EditorGUI.indentLevel++;
+                this.settings.hiddenFaceDistance = EditorGUILayout.Slider("Distance Threshold", this.settings.hiddenFaceDistance, 0.001f, 0.1f);
+                EditorGUI.indentLevel--;
+            }
+
             if (this.meshFilters.Count == 0)
             {
                 EditorGUILayout.HelpBox("Add meshes to the list before merging.", MessageType.Info);
@@ -234,6 +246,11 @@ namespace MergeMeshUnity
                 var mesh = new Mesh { name = meshName };
                 filterComponent.sharedMesh = mesh;
                 mesh.CombineMeshes(combine.ToArray(), true, true);
+
+                if (this.settings.removeHiddenFaces)
+                {
+                    RemoveHiddenFaces(mesh, this.settings.hiddenFaceDistance);
+                }
 
                 if (this.settings.applyScale)
                 {
@@ -351,6 +368,159 @@ namespace MergeMeshUnity
         {
             var json = JsonUtility.ToJson(this.settings, true);
             EditorPrefs.SetString(LastSaveFolderKey, json);
+        }
+
+        private static void RemoveHiddenFaces(Mesh mesh, float distanceThreshold)
+        {
+            var verts = mesh.vertices;
+            var tris = mesh.triangles;
+            int triCount = tris.Length / 3;
+            if (triCount == 0) return;
+
+            var centers = new Vector3[triCount];
+            var faceNormals = new Vector3[triCount];
+
+            for (int i = 0; i < triCount; i++)
+            {
+                var v0 = verts[tris[i * 3]];
+                var v1 = verts[tris[i * 3 + 1]];
+                var v2 = verts[tris[i * 3 + 2]];
+                centers[i] = (v0 + v1 + v2) / 3f;
+                var cross = Vector3.Cross(v1 - v0, v2 - v0);
+                faceNormals[i] = cross.sqrMagnitude > 1e-12f ? cross.normalized : Vector3.zero;
+            }
+
+            float cellSize = Mathf.Max(distanceThreshold * 2f, 0.001f);
+            var grid = new Dictionary<Vector3Int, List<int>>();
+
+            for (int i = 0; i < triCount; i++)
+            {
+                var cell = new Vector3Int(
+                    Mathf.FloorToInt(centers[i].x / cellSize),
+                    Mathf.FloorToInt(centers[i].y / cellSize),
+                    Mathf.FloorToInt(centers[i].z / cellSize));
+
+                if (!grid.TryGetValue(cell, out var bucket))
+                {
+                    bucket = new List<int>();
+                    grid[cell] = bucket;
+                }
+                bucket.Add(i);
+            }
+
+            var hidden = new bool[triCount];
+            float distSq = distanceThreshold * distanceThreshold;
+
+            for (int i = 0; i < triCount; i++)
+            {
+                if (hidden[i] || faceNormals[i] == Vector3.zero) continue;
+
+                int cx = Mathf.FloorToInt(centers[i].x / cellSize);
+                int cy = Mathf.FloorToInt(centers[i].y / cellSize);
+                int cz = Mathf.FloorToInt(centers[i].z / cellSize);
+                bool found = false;
+
+                for (int dx = -1; dx <= 1 && !found; dx++)
+                for (int dy = -1; dy <= 1 && !found; dy++)
+                for (int dz = -1; dz <= 1 && !found; dz++)
+                {
+                    var neighborCell = new Vector3Int(cx + dx, cy + dy, cz + dz);
+                    if (!grid.TryGetValue(neighborCell, out var bucket)) continue;
+
+                    foreach (int j in bucket)
+                    {
+                        if (j <= i || hidden[j] || faceNormals[j] == Vector3.zero) continue;
+
+                        if ((centers[i] - centers[j]).sqrMagnitude > distSq) continue;
+
+                        float dot = Vector3.Dot(faceNormals[i], faceNormals[j]);
+                        if (dot < -0.7f)
+                        {
+                            hidden[i] = true;
+                            hidden[j] = true;
+                            found = true;
+                            break;
+                        }
+                        if (dot > 0.95f)
+                        {
+                            hidden[j] = true;
+                        }
+                    }
+                }
+            }
+
+            for (int i = 0; i < triCount; i++)
+            {
+                if (faceNormals[i] == Vector3.zero) hidden[i] = true;
+            }
+
+            int removedCount = hidden.Count(h => h);
+            if (removedCount == 0) return;
+
+            var norms = mesh.normals;
+            var tangents = mesh.tangents;
+            var uv0 = mesh.uv;
+            var uv1 = mesh.uv2;
+            var colors = mesh.colors;
+            bool hasNorms = norms.Length == verts.Length;
+            bool hasTangents = tangents.Length == verts.Length;
+            bool hasUV0 = uv0.Length == verts.Length;
+            bool hasUV1 = uv1.Length == verts.Length;
+            bool hasColors = colors.Length == verts.Length;
+
+            var newTris = new List<int>(tris.Length);
+            for (int i = 0; i < triCount; i++)
+            {
+                if (hidden[i]) continue;
+                newTris.Add(tris[i * 3]);
+                newTris.Add(tris[i * 3 + 1]);
+                newTris.Add(tris[i * 3 + 2]);
+            }
+
+            var usedVerts = new bool[verts.Length];
+            foreach (int idx in newTris) usedVerts[idx] = true;
+
+            var remap = new int[verts.Length];
+            int newCount = 0;
+            for (int i = 0; i < verts.Length; i++)
+                remap[i] = usedVerts[i] ? newCount++ : -1;
+
+            var compactVerts = new Vector3[newCount];
+            var compactNorms = hasNorms ? new Vector3[newCount] : null;
+            var compactTangents = hasTangents ? new Vector4[newCount] : null;
+            var compactUV0 = hasUV0 ? new Vector2[newCount] : null;
+            var compactUV1 = hasUV1 ? new Vector2[newCount] : null;
+            var compactColors = hasColors ? new Color[newCount] : null;
+
+            for (int i = 0; i < verts.Length; i++)
+            {
+                if (!usedVerts[i]) continue;
+                int ni = remap[i];
+                compactVerts[ni] = verts[i];
+                if (compactNorms != null) compactNorms[ni] = norms[i];
+                if (compactTangents != null) compactTangents[ni] = tangents[i];
+                if (compactUV0 != null) compactUV0[ni] = uv0[i];
+                if (compactUV1 != null) compactUV1[ni] = uv1[i];
+                if (compactColors != null) compactColors[ni] = colors[i];
+            }
+
+            for (int i = 0; i < newTris.Count; i++)
+                newTris[i] = remap[newTris[i]];
+
+            mesh.Clear();
+            mesh.indexFormat = newCount > 65535 ? IndexFormat.UInt32 : IndexFormat.UInt16;
+            mesh.vertices = compactVerts;
+            if (compactNorms != null) mesh.normals = compactNorms;
+            if (compactTangents != null) mesh.tangents = compactTangents;
+            if (compactUV0 != null) mesh.uv = compactUV0;
+            if (compactUV1 != null) mesh.uv2 = compactUV1;
+            if (compactColors != null) mesh.colors = compactColors;
+            mesh.SetTriangles(newTris, 0);
+            mesh.RecalculateBounds();
+
+            int removedVerts = verts.Length - newCount;
+            Debug.Log($"[MergeMesh] Removed {removedCount} hidden triangles, {removedVerts} unused vertices " +
+                      $"({triCount} → {triCount - removedCount} tris, {verts.Length} → {newCount} verts)");
         }
 
         [MenuItem("Tools/Thinhnv/Merge and Export Mesh")]

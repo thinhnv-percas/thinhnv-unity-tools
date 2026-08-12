@@ -77,7 +77,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
             {
                 result.uniform = Build(entry, row.modelSource, material,
                     entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, 1, BuildAxis.None));
-                BakeSize(entry, result.uniform);
                 return result;
             }
 
@@ -138,8 +137,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 anyRotated |= row.PerAxisModelSource(axis) == null;
             }
 
-            Mesh baseMesh = null;
-            bool scratchMesh = false;
             if (anyRotated)
             {
                 GameObject basePrefab = Build(entry, source, material,
@@ -147,14 +144,9 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     ObjectDefNaming.ModelBasePrefab(entry, magnitude, family));
                 result.SetBasePrefab(family, basePrefab);
 
-                if (entry.bakeBaseMesh)
+                if (entry.keepDecalRotation)
                 {
-                    baseMesh = MeshBakeFactory.Bake(entry, basePrefab);
-                }
-                else if (entry.bakeMeshPerAxis)
-                {
-                    baseMesh = MeshBakeFactory.CombineFrom(entry, basePrefab);
-                    scratchMesh = baseMesh != null;
+                    AxisVariantFactory.CacheDecalNames(basePrefab, entry.decalCompensationAxes);
                 }
             }
 
@@ -163,50 +155,28 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 if (row.PerAxisModelSource(axis) != null)
                 {
                     GameObject own = BuildAxisModel(entry, row, material, magnitude, axis);
-                    BakeSize(entry, own);
                     result.SetAxis(axis, own);
                     continue;
                 }
 
                 GameObject basePrefab = result.BasePrefab(family);
-                GameObject variant = Variant(entry, row, basePrefab, magnitude, axis);
-                if (entry.bakeMeshPerAxis && baseMesh != null)
-                {
-                    MeshBakeFactory.BakeAxis(entry, row, variant, baseMesh, axis);
-                }
-
+                GameObject variant = Variant(entry, basePrefab, magnitude, axis);
                 result.SetAxis(axis, variant);
-            }
-
-            if (scratchMesh)
-            {
-                Object.DestroyImmediate(baseMesh);
-            }
-        }
-
-        /// <summary>Bake a standalone size prefab when the option is on; variants are handled by the base.</summary>
-        private static void BakeSize(ObjectDefBuildEntry entry, GameObject prefab)
-        {
-            if (entry.bakeSizeMesh && prefab != null)
-            {
-                MeshBakeFactory.Bake(entry, prefab);
             }
         }
 
         /// <summary>
-        /// The axis variant, re-applying the row's captured angle when it has one. Without that a rebuild
-        /// would reset a hand-tweaked rotation back to the canonical axis value - and with Mesh Per Axis on
-        /// it would also stack that reset on top of a mesh already holding the tweak.
+        /// The axis variant, falling back to <see cref="ObjectDefBuildEntry.BarRotationOverride"/> when the
+        /// Bar family's source isn't authored along Y.
         /// </summary>
-        private static GameObject Variant(ObjectDefBuildEntry entry, ObjectDefBuildRow row,
-            GameObject basePrefab, int magnitude, BuildAxis axis)
+        private static GameObject Variant(ObjectDefBuildEntry entry, GameObject basePrefab, int magnitude,
+            BuildAxis axis)
         {
-            Quaternion? authored = row.HasBakedRotation(axis)
-                ? row.BakedRotationFor(axis)
-                : (Quaternion?)null;
+            Quaternion? authored = entry.BarRotationOverride(axis);
 
             return AxisVariantFactory.CreateOrRefresh(basePrefab, entry.prefabFolder,
-                ObjectDefNaming.ModelPrefab(entry, magnitude, axis), axis, entry.overwritePrefabs, authored);
+                ObjectDefNaming.ModelPrefab(entry, magnitude, axis), axis, entry.overwritePrefabs, authored,
+                entry.keepDecalRotation ? entry.decalCompensationAxes : null);
         }
     }
 }

@@ -22,7 +22,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                 }
 
                 GameObject prefab = BuildAxisModel(entry, row, material, magnitude, axis);
-                BakeSize(entry, prefab);
                 result.SetAxis(axis, prefab);
             }
         }
@@ -56,7 +55,6 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
 
             GameObject shared = Build(entry, source, material,
                 entry.prefabFolder, ObjectDefNaming.ModelPrefab(entry, magnitude, axes[0]));
-            BakeSize(entry, shared);
 
             foreach (BuildAxis axis in axes)
             {

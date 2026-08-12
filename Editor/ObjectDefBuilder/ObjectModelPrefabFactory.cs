@@ -13,6 +13,10 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
     /// </code>
     /// With <see cref="ObjectDefBuildEntry.useWrapper"/> off the model is parented straight to the root
     /// and a convex collider goes on the renderer that owns the mesh instead.
+    ///
+    /// Independently, <see cref="ObjectDefBuildEntry.useRendererWrapper"/> inserts a pivot parent above
+    /// every renderer inside the model (needs Unpack Model on), the same pivot -&gt; piece pairing
+    /// <see cref="BreakPiecePrefabFactory"/> gives its pieces.
     /// </summary>
     public static partial class ObjectModelPrefabFactory
     {
@@ -92,7 +96,48 @@ namespace Thinhnv.UnityTools.ObjectDefBuilder
                     instance, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
             }
 
+            if (entry.useRendererWrapper)
+            {
+                if (entry.unpackModel)
+                {
+                    WrapRenderersInPivots(instance);
+                }
+                else
+                {
+                    Debug.LogWarning("[ObjectDefBuilder] 'Wrap Renderers' needs 'Unpack Model' on; " +
+                                     $"skipped for '{modelSource.name}'.");
+                }
+            }
+
             return owner;
+        }
+
+        /// <summary>
+        /// Insert a pivot parent above every MeshRenderer under <paramref name="modelInstance"/>, carrying
+        /// the renderer's original local pose so the renderer itself ends up at local identity - the same
+        /// pivot -&gt; piece pairing <see cref="BreakPiecePrefabFactory"/> gives its pieces. The inserted
+        /// pivot is a pure identity transform composed with the renderer's old local one, so the renderer's
+        /// world pose (and that of any of its children) is unchanged.
+        /// </summary>
+        private static void WrapRenderersInPivots(GameObject modelInstance)
+        {
+            foreach (MeshRenderer renderer in modelInstance.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (!renderer.TryGetComponent(out MeshFilter filter) || filter.sharedMesh == null)
+                {
+                    continue;
+                }
+
+                Transform node = renderer.transform;
+                var pivot = new GameObject(node.name);
+                pivot.transform.SetParent(node.parent, false);
+                pivot.transform.SetLocalPositionAndRotation(node.localPosition, node.localRotation);
+                pivot.transform.localScale = node.localScale;
+
+                node.SetParent(pivot.transform, false);
+                node.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                node.localScale = Vector3.one;
+            }
         }
 
         /// <summary>
