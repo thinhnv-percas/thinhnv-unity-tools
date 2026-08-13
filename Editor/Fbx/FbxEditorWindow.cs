@@ -22,7 +22,7 @@ namespace Thinhnv.UnityTools.Fbx
             Mesh
         }
 
-        [MenuItem("Thinhnv/Fbx Tools/Fbx Editor")]
+        [MenuItem("Tools/Thinhnv/Fbx Editor")]
         private static void ShowWindow()
         {
             GetWindow<FbxEditorWindow>("Fbx Editor");
