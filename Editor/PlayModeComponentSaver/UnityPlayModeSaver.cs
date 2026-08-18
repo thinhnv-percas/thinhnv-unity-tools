@@ -462,7 +462,10 @@ namespace Framework
 
 				private static void OnSceneSaved(Scene scene, string path)
 				{
-					UnityPlayModeSaverSceneUtils.CacheScenePrefabInstances(scene);
+					if (scene.IsValid() && scene.isLoaded)
+					{
+						UnityPlayModeSaverSceneUtils.CacheScenePrefabInstances(scene);
+					}
 				}
 
 				private static void OnSceneUnload(Scene scene)

@@ -1,6 +1,8 @@
 #if UNITY_EDITOR
+using System;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditor.Toolbars;
 using UnityEngine;
 using UnityEngine.UIElements;
 using System.Reflection;
@@ -11,12 +13,12 @@ using UnityEngine.SceneManagement;
 [InitializeOnLoad]
 public static class SceneSwitcherToolbar
 {
+    private const string ToolbarId = "SceneSwitcher/Scene Switcher";
+
     private static string[] sceneNames = new string[0];
     private static int selectedIndex = 0;
     private static string lastActiveScene = "";
-    private static VisualElement toolbarUI;
 
-    private static float positionOffset = 180f; // Move closer to Play button
     private static float dropdownBoxHeight = 20f; // Dropdown button height
 
     private static bool fetchAllScenes
@@ -34,37 +36,44 @@ public static class SceneSwitcherToolbar
         EditorSceneManager.activeSceneChangedInEditMode += (prev, current) => UpdateSceneSelection();
         EditorApplication.playModeStateChanged += OnPlayModeChanged;
 
-        EditorApplication.delayCall += AddToolbarUI;
+        // The attribute-driven element can be stale right after a domain reload;
+        // nudge Unity to (re)build it once the editor has settled.
+        EditorApplication.delayCall += () => MainToolbar.Refresh(ToolbarId);
     }
 
-    static void AddToolbarUI()
+    [MainToolbarElement(
+        ToolbarId,
+        defaultDockPosition = MainToolbarDockPosition.Left)]
+    public static MainToolbarElement CreateToolbarElement()
     {
-        var toolbarType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.Toolbar");
-        if (toolbarType == null) return;
+        // MainToolbarCustom is the only MainToolbarElement that can host an arbitrary
+        // VisualElement. Its base type/ctor/members are public, but Unity keeps the
+        // class itself internal, so it must be constructed via reflection.
+        Type customType = typeof(MainToolbarButton)
+            .Assembly
+            .GetType(
+                "UnityEditor.Toolbars.MainToolbarCustom",
+                throwOnError: true);
 
-        var toolbars = Resources.FindObjectsOfTypeAll(toolbarType);
-        if (toolbars.Length == 0) return;
+        return (MainToolbarElement)Activator.CreateInstance(
+            customType,
+            BindingFlags.Instance |
+            BindingFlags.Public |
+            BindingFlags.NonPublic,
+            binder: null,
+            args: new object[]
+            {
+                (Func<VisualElement>)BuildElement
+            },
+            culture: null);
+    }
 
-        var toolbar = toolbars[0];
-        var rootField = toolbarType.GetField("m_Root", BindingFlags.NonPublic | BindingFlags.Instance);
-        if (rootField == null) return;
-
-        var root = rootField.GetValue(toolbar) as VisualElement;
-        if (root == null) return;
-
-        var leftContainer = root.Q("ToolbarZoneLeftAlign");
-        if (leftContainer == null) return;
-
-        // Remove old UI if it exists to prevent duplication
-        if (toolbarUI != null)
-        {
-            leftContainer.Remove(toolbarUI);
-        }
-
-        toolbarUI = new IMGUIContainer(OnGUI);
-        toolbarUI.style.marginLeft = positionOffset;
-
-        leftContainer.Add(toolbarUI);
+    private static VisualElement BuildElement()
+    {
+        var container = new IMGUIContainer(OnGUI);
+        container.style.marginLeft = 4;
+        container.style.marginRight = 4;
+        return container;
     }
 
     static void OnGUI()
@@ -226,7 +235,7 @@ public static class SceneSwitcherToolbar
     {
         if (state == PlayModeStateChange.EnteredPlayMode || state == PlayModeStateChange.ExitingPlayMode)
         {
-            EditorApplication.delayCall += () => AddToolbarUI();
+            EditorApplication.delayCall += () => MainToolbar.Refresh(ToolbarId);
         }
     }
 }

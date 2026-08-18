@@ -41,6 +41,12 @@ namespace Framework
 					prefabIndexer = gameObject.GetComponent<UnityPlayModeSaverSceneUtils>();
 				}
 
+				if (prefabIndexer == null)
+				{
+					Debug.LogWarning($"[UnityPlayModeSaver] Failed to create prefab indexer for scene '{scene.path}', skipping.");
+					return;
+				}
+
 				prefabIndexer.BuildScenePrefabMap();
 			}
 

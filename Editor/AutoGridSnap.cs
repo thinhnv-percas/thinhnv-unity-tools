@@ -83,7 +83,7 @@ public class AutoGridSnap : EditorWindow
 
     private List<Type> FindMonoBehavioursInSceneExcludeCanvas()
     {
-        MonoBehaviour[] allMonoBehaviours = GameObject.FindObjectsOfType<MonoBehaviour>(true);
+        MonoBehaviour[] allMonoBehaviours = GameObject.FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None);
         List<Type> uniqueTypes = new List<Type>();
 
         foreach (var mb in allMonoBehaviours)
