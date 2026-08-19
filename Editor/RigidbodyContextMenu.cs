@@ -1,5 +1,4 @@
 // Assets/Editor/RigidbodyContextMenu.cs
-
 using UnityEditor;
 using UnityEngine;
 
