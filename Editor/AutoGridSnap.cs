@@ -17,7 +17,7 @@ public class AutoGridSnap : EditorWindow
     private bool _globalPos = false;
     private Vector3 _snapValue = new Vector3(0.5f, 0.5f, 0.5f);
 
-    [MenuItem("Tools/Auto Grid Snap %_l")]
+    [MenuItem("Tools/Thinhnv/Auto Grid Snap %_l")]
 
     static void Init()
     {

@@ -34,7 +34,7 @@ namespace VHierarchy
 
 
 
-        const string dir = "Tools/vHierarchy/";
+        const string dir = "Tools/Thinhnv/vHierarchy/";
 
         const string navigationBar = dir + "Navigation bar";
         const string sceneSelector = dir + "Scene selector";

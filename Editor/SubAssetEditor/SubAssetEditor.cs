@@ -257,7 +257,7 @@ namespace Coffee.Editors
             isInGUI = false;
         }
 
-        [MenuItem("Assets/Edit Sub Assets")]
+        [MenuItem("Tools/Thinhnv/Edit Sub Assets")]
         private static void Open()
         {
             var editor = GetWindow<SubAssetEditor>();

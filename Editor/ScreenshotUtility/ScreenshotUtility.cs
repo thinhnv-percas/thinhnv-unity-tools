@@ -134,7 +134,7 @@ public sealed class ScreenshotUtility : EditorWindow
         return fileName;
     }
 
-    [MenuItem("Tools/Screenshot")]
+    [MenuItem("Tools/Thinhnv/Screenshot")]
     public static void Init()
     {
         //Show existing window instance. If one doesn't exist, make one.

@@ -11,21 +11,9 @@ namespace ChenPipi.ProjectPinBoard.Editor
 
         private const string k_MenuName = "Project Pin Board 📌";
 
-        #region Window Menu
+        #region Menu
 
-        private const string k_WindowMenuName = "Window/" + k_MenuName;
-
-        [MenuItem(k_WindowMenuName)]
-        private static void WindowMenu_Open()
-        {
-            ProjectPinBoardManager.Open(true);
-        }
-
-        #endregion
-
-        #region Assets Menu
-
-        private const string k_AssetsMenuPath = @"Assets/" + k_MenuName + "/";
+        private const string k_AssetsMenuPath = "Tools/Thinhnv/" + k_MenuName + "/";
 
         private const int k_AssetsMenuPriority = 5;
 

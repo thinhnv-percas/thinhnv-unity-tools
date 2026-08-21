@@ -32,11 +32,11 @@ namespace Framework
 				private const string kRevertComponentMenuString = "CONTEXT/Component/" + kRevertMenuString;
 
 				private const int kSaveGameObjectMenuPriority = -100;
-				private const string kSaveGameObjectMenuString = "GameObject/" + kSaveMenuString;
-				private const string kSaveGameObjectSnapshotMenuString = "GameObject/" + kSaveSnapshotMenuString;
-				private const string kRevertGameObjectMenuString = "GameObject/" + kRevertMenuString;
+				private const string kSaveGameObjectMenuString = "Tools/Thinhnv/Play Mode Saver/" + kSaveMenuString;
+				private const string kSaveGameObjectSnapshotMenuString = "Tools/Thinhnv/Play Mode Saver/" + kSaveSnapshotMenuString;
+				private const string kRevertGameObjectMenuString = "Tools/Thinhnv/Play Mode Saver/" + kRevertMenuString;
 
-				private const string kWindowMenuString = "Window/Play Mode Saver";
+				private const string kWindowMenuString = "Tools/Thinhnv/Play Mode Saver/Open Window";
 
 				private const string kUndoText = "Play Mode Changes";
 				private const string kEditorPrefsKey = "UnityPlayModeSaver.";

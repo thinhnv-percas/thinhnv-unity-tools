@@ -34,7 +34,7 @@ public class BulkRenameWindow : EditorWindow
     private readonly RenameSection renameSection1 = new("Bulk Rename Assets");
     private readonly RenameSection renameSection2 = new("Bulk Rename Assets");
 
-    [MenuItem("Tools/Bulk Rename")]
+    [MenuItem("Tools/Thinhnv/Bulk Rename")]
     private static void Open()
     {
         GetWindow<BulkRenameWindow>("Bulk Rename");
