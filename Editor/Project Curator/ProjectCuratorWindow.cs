@@ -75,6 +75,17 @@ namespace Ogxd.ProjectCurator
         private bool referencesOpen = true;
         private string highlightedAssetGuid;
 
+        // =========================================================
+        // SHOW FULL PATH OPTION
+        // =========================================================
+        private const string ShowFullPathPrefKey = "ProjectCurator.ShowFullPath";
+
+        private static bool ShowFullPath
+        {
+            get => EditorPrefs.GetBool(ShowFullPathPrefKey, false);
+            set => EditorPrefs.SetBool(ShowFullPathPrefKey, value);
+        }
+
         private static GUIStyle titleStyle;
         private static GUIStyle TitleStyle =>
             titleStyle ?? (titleStyle = new GUIStyle(EditorStyles.label)
@@ -280,8 +291,10 @@ namespace Ogxd.ProjectCurator
                 rowStyle.normal.textColor = new Color(0.18f, 0.48f, 0.95f);
             }
 
+            string label = ShowFullPath ? path : Path.GetFileName(path);
+
             if (GUILayout.Button(
-                new GUIContent(Path.GetFileName(path), path),
+                new GUIContent(label, path),
                 rowStyle))
             {
                 SelectAssetAndPing(path, guid);
@@ -341,6 +354,11 @@ namespace Ogxd.ProjectCurator
                 new GUIContent("Project Overlay"),
                 ProjectWindowOverlay.Enabled,
                 () => { ProjectWindowOverlay.Enabled = !ProjectWindowOverlay.Enabled; });
+
+            menu.AddItem(
+                new GUIContent("Show Full Path"),
+                ShowFullPath,
+                () => { ShowFullPath = !ShowFullPath; Repaint(); });
         }
 
         // =========================================================
