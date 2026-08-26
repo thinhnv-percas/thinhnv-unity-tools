@@ -6,14 +6,14 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.SoCreator
 {
     /// <summary>
-    /// Project Settings page for SO Creator (Project Settings &gt; Percas Tools &gt; SO Creator).
+    /// Project Settings page for SO Creator (Project Settings &gt; Thinhnv Tools &gt; SO Creator).
     /// Lets the team scan the project for ScriptableObject types and pick which ones show up in
     /// the Assets &gt; Create &gt; SO Creator menu, with what path/file name — no attributes required
     /// on the ScriptableObject classes themselves.
     /// </summary>
     public static class SoCreatorSettingsProvider
     {
-        public const string SettingsPath = "Project/Percas Tools/SO Creator";
+        public const string SettingsPath = "Project/Thinhnv Tools/SO Creator";
 
         [SettingsProvider]
         public static SettingsProvider CreateSettingsProvider()
@@ -102,9 +102,39 @@ namespace Thinhnv.UnityTools.SoCreator
                         ScanAndReport(settings);
                     }
 
+                    if (GUILayout.Button("Select All", GUILayout.Width(80)))
+                    {
+                        SetAllEnabled(settings, true);
+                    }
+
+                    if (GUILayout.Button("Unselect All", GUILayout.Width(90)))
+                    {
+                        SetAllEnabled(settings, false);
+                    }
+
                     GUILayout.FlexibleSpace();
                     GUILayout.Label("Search", GUILayout.Width(46));
                     search = EditorGUILayout.TextField(search, GUILayout.Width(200));
+                }
+            }
+
+            private void SetAllEnabled(SoCreatorSettings settings, bool enabled)
+            {
+                bool changed = false;
+                foreach (SoCreatorEntry entry in settings.Entries)
+                {
+                    if (!MatchesSearch(entry, search) || entry.Enabled == enabled)
+                    {
+                        continue;
+                    }
+
+                    entry.Enabled = enabled;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    settings.SaveSettings();
                 }
             }
 

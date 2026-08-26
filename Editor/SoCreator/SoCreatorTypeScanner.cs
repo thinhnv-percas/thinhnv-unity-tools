@@ -8,7 +8,7 @@ namespace Thinhnv.UnityTools.SoCreator
     /// <summary>
     /// Finds ScriptableObject types defined in this project (scripts and installed packages),
     /// excluding types built into the Unity Editor itself. Used to populate/refresh
-    /// <see cref="SoCreatorSettings"/> from Project Settings &gt; Percas Tools &gt; SO Creator.
+    /// <see cref="SoCreatorSettings"/> from Project Settings &gt; Thinhnv Tools &gt; SO Creator.
     /// </summary>
     public static class SoCreatorTypeScanner
     {

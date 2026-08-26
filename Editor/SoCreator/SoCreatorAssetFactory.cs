@@ -18,7 +18,7 @@ namespace Thinhnv.UnityTools.SoCreator
             {
                 Debug.LogWarning(
                     $"SO Creator: could not resolve type '{entry?.AssemblyQualifiedTypeName}'. " +
-                    "The script may have been renamed or removed — rescan from Project Settings > Percas Tools > SO Creator.");
+                    "The script may have been renamed or removed — rescan from Project Settings > Thinhnv Tools > SO Creator.");
                 return;
             }
 

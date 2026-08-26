@@ -6,7 +6,7 @@ namespace Thinhnv.UnityTools.SoCreator
 {
     /// <summary>
     /// Entry points for SO Creator: a "Create" menu built from the types enabled in
-    /// Project Settings &gt; Percas Tools &gt; SO Creator, plus shortcuts to that settings page.
+    /// Project Settings &gt; Thinhnv Tools &gt; SO Creator, plus shortcuts to that settings page.
     /// No <c>[CreateAssetMenu]</c> attribute is required on the ScriptableObject types themselves.
     /// </summary>
     public static class SoCreatorMenu
@@ -19,7 +19,7 @@ namespace Thinhnv.UnityTools.SoCreator
             {
                 if (EditorUtility.DisplayDialog("SO Creator",
                         "No ScriptableObject types are set up yet.\n\n" +
-                        "Open Project Settings > Percas Tools > SO Creator and scan the project to set some up.",
+                        "Open Project Settings > Thinhnv Tools > SO Creator and scan the project to set some up.",
                         "Open Settings", "Cancel"))
                 {
                     OpenSettings();
@@ -37,7 +37,13 @@ namespace Thinhnv.UnityTools.SoCreator
                 menu.AddItem(new GUIContent(EffectiveMenuPath(captured)), false, () => SoCreatorAssetFactory.CreateAssetInteractive(captured));
             }
 
-            menu.ShowAsContext();
+            // GenericMenu.ShowAsContext() reads Event.current, which is null when a MenuItem is
+            // invoked from the main menu bar (as opposed to an OnGUI context click) — it then
+            // throws and the menu never appears. DropDown takes an explicit screen-space rect
+            // instead, so it works reliably from here.
+            Rect mainWindow = EditorGUIUtility.GetMainWindowPosition();
+            var dropDownRect = new Rect(mainWindow.x + mainWindow.width / 2f, mainWindow.y + mainWindow.height / 2f, 0, 0);
+            menu.DropDown(dropDownRect);
         }
 
         [MenuItem("Tools/Thinhnv/SO Creator/Open Settings")]
