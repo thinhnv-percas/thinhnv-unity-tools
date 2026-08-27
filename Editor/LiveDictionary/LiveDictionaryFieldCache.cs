@@ -2,14 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 
-namespace Thinhnv.UnityTools.AlchemyLite
+namespace Thinhnv.UnityTools.LiveDictionary
 {
     /// <summary>
-    /// Per-type cache of <see cref="AlchemyDictionaryAttribute"/> fields, so the generic MonoBehaviour/
+    /// Per-type cache of <see cref="LiveDictionaryAttribute"/> fields, so the generic MonoBehaviour/
     /// ScriptableObject editors (which run for every object that doesn't have a more specific custom
     /// editor) only pay the reflection cost once per type instead of on every Inspector repaint.
     /// </summary>
-    internal static class AlchemyDictionaryFieldCache
+    internal static class LiveDictionaryFieldCache
     {
         private const BindingFlags FieldFlags =
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
@@ -28,7 +28,7 @@ namespace Thinhnv.UnityTools.AlchemyLite
             {
                 foreach (FieldInfo field in t.GetFields(FieldFlags))
                 {
-                    if (!field.IsDefined(typeof(AlchemyDictionaryAttribute), false))
+                    if (!field.IsDefined(typeof(LiveDictionaryAttribute), false))
                     {
                         continue;
                     }

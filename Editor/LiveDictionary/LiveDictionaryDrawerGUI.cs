@@ -5,15 +5,15 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace Thinhnv.UnityTools.AlchemyLite
+namespace Thinhnv.UnityTools.LiveDictionary
 {
     /// <summary>
-    /// Draws a live key/value list for every <see cref="AlchemyDictionaryAttribute"/> field on a
+    /// Draws a live key/value list for every <see cref="LiveDictionaryAttribute"/> field on a
     /// target: read-only while not playing, editable while Play mode is running. Nothing here is
     /// written back through <c>SerializedProperty</c>/Undo — it edits the live Dictionary instance
     /// directly via reflection, since the whole point is a transient debug view, not persistence.
     /// </summary>
-    internal static class AlchemyDictionaryDrawerGUI
+    internal static class LiveDictionaryDrawerGUI
     {
         public static void DrawAll(Object target, FieldInfo[] fields)
         {
@@ -24,7 +24,7 @@ namespace Thinhnv.UnityTools.AlchemyLite
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField(
-                Application.isPlaying ? "Alchemy Dictionaries" : "Alchemy Dictionaries (read-only — enter Play mode to edit)",
+                Application.isPlaying ? "Live Dictionaries" : "Live Dictionaries (read-only — enter Play mode to edit)",
                 EditorStyles.boldLabel);
 
             foreach (FieldInfo field in fields)

@@ -1,6 +1,6 @@
 using System;
 
-namespace Thinhnv.UnityTools.AlchemyLite
+namespace Thinhnv.UnityTools.LiveDictionary
 {
     /// <summary>
     /// Shows a <see cref="System.Collections.Generic.Dictionary{TKey,TValue}"/> field in the Inspector
@@ -9,18 +9,17 @@ namespace Thinhnv.UnityTools.AlchemyLite
     /// a domain reload) resets it just like any other unserialized field, exactly the same as if this
     /// attribute weren't there. No base class, interface, or source generator required:
     /// <code>
-    /// [AlchemyDictionary]
+    /// [LiveDictionary]
     /// public Dictionary&lt;string, GameObject&gt; dictionary = new();
     /// </code>
     ///
-    /// This intentionally drops the "actually serialize it" half of annulusgames/Alchemy's
-    /// [AlchemySerializeField] — see AlchemyDictionaryFieldCache/AlchemyDictionaryDrawerGUI (Editor) for
-    /// the drawing side. If you need the Dictionary's contents to survive play mode or reloads, this
-    /// attribute isn't enough; that requires a serialization mechanism (custom or Alchemy's own), not
-    /// just an Inspector view.
+    /// This is a view only, not a serializer — if you need the Dictionary's contents to survive Play
+    /// mode or a domain reload, this attribute isn't enough; that requires an actual serialization
+    /// mechanism, not just an Inspector view. See LiveDictionaryFieldCache/LiveDictionaryDrawerGUI
+    /// (Editor) for the drawing side.
     /// </summary>
     [AttributeUsage(AttributeTargets.Field, AllowMultiple = false)]
-    public sealed class AlchemyDictionaryAttribute : Attribute
+    public sealed class LiveDictionaryAttribute : Attribute
     {
     }
 }
