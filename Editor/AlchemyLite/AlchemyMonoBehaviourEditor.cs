@@ -5,12 +5,14 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.AlchemyLite
 {
     /// <summary>
-    /// Generic fallback Inspector for every ScriptableObject that doesn't already have a more specific
-    /// custom editor. See <see cref="AlchemyMonoBehaviourEditor"/> and <see cref="AlchemyDictionaryAttribute"/>.
+    /// Generic fallback Inspector for every MonoBehaviour that doesn't already have a more specific
+    /// custom editor (Unity picks the most specific one, so components with their own editor are
+    /// unaffected). Renders the normal default inspector, then appends a live view/editor for any
+    /// <see cref="AlchemyDictionaryAttribute"/> fields. See that attribute for usage.
     /// </summary>
-    [CustomEditor(typeof(ScriptableObject), true)]
+    [CustomEditor(typeof(MonoBehaviour), true)]
     [CanEditMultipleObjects]
-    public sealed class AlchemyScriptableObjectEditor : Editor
+    public sealed class AlchemyMonoBehaviourEditor : Editor
     {
         private FieldInfo[] alchemyFields;
 
@@ -19,6 +21,8 @@ namespace Thinhnv.UnityTools.AlchemyLite
             alchemyFields = AlchemyDictionaryFieldCache.GetFields(target.GetType());
             if (alchemyFields.Length > 0)
             {
+                // Values can change from game code between frames (and OnEnable may not re-fire on
+                // entering/exiting Play mode if domain reload is disabled) — keep repainting regardless.
                 EditorApplication.update += Repaint;
             }
         }

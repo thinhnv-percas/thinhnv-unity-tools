@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
@@ -9,86 +8,81 @@ using Object = UnityEngine.Object;
 namespace Thinhnv.UnityTools.AlchemyLite
 {
     /// <summary>
-    /// Draws an editable key/value list for every <see cref="AlchemySerializeFieldAttribute"/>
-    /// Dictionary field on a target — the fields are <c>[NonSerialized]</c> so they never show up
-    /// through <c>SerializedProperty</c>/<c>DrawDefaultInspector</c>, and are instead edited directly
-    /// via reflection on the live object. Shared by <see cref="AlchemyBehaviourEditor"/> and
-    /// <see cref="AlchemyScriptableObjectEditor"/>.
+    /// Draws a live key/value list for every <see cref="AlchemyDictionaryAttribute"/> field on a
+    /// target: read-only while not playing, editable while Play mode is running. Nothing here is
+    /// written back through <c>SerializedProperty</c>/Undo — it edits the live Dictionary instance
+    /// directly via reflection, since the whole point is a transient debug view, not persistence.
     /// </summary>
-    internal static class AlchemyDictionaryInspectorGUI
+    internal static class AlchemyDictionaryDrawerGUI
     {
-        public static void DrawAll(Object target)
+        public static void DrawAll(Object target, FieldInfo[] fields)
         {
-            bool drewHeader = false;
-
-            foreach (FieldInfo field in AlchemyDictionarySerializer.GetAlchemyDictionaryFields(target.GetType()))
+            if (fields.Length == 0)
             {
-                if (!field.FieldType.IsGenericType || field.FieldType.GetGenericTypeDefinition() != typeof(Dictionary<,>))
-                {
-                    continue;
-                }
+                return;
+            }
 
-                if (!drewHeader)
-                {
-                    EditorGUILayout.Space();
-                    EditorGUILayout.LabelField("Alchemy Dictionaries", EditorStyles.boldLabel);
-                    drewHeader = true;
-                }
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                Application.isPlaying ? "Alchemy Dictionaries" : "Alchemy Dictionaries (read-only — enter Play mode to edit)",
+                EditorStyles.boldLabel);
 
+            foreach (FieldInfo field in fields)
+            {
                 DrawField(target, field);
             }
         }
 
         private static void DrawField(Object target, FieldInfo field)
         {
-            var dict = (IDictionary)(field.GetValue(target) ?? Activator.CreateInstance(field.FieldType));
-            field.SetValue(target, dict);
+            var dict = (IDictionary)field.GetValue(target);
+
+            EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(field.Name), EditorStyles.miniBoldLabel);
+            if (dict == null)
+            {
+                EditorGUILayout.LabelField("(null)");
+                return;
+            }
 
             Type[] args = field.FieldType.GetGenericArguments();
             Type keyType = args[0];
             Type valueType = args[1];
+            bool editable = Application.isPlaying;
 
-            EditorGUILayout.LabelField(ObjectNames.NicifyVariableName(field.Name), EditorStyles.miniBoldLabel);
             EditorGUI.indentLevel++;
-
-            bool changed = false;
-            object removeKey = null;
-            object pendingKey = null;
-            object pendingValue = null;
-
-            foreach (DictionaryEntry entry in dict)
+            using (new EditorGUI.DisabledScope(!editable))
             {
-                using (new EditorGUILayout.HorizontalScope())
+                object removeKey = null;
+                object pendingKey = null;
+                object pendingValue = null;
+
+                foreach (DictionaryEntry entry in dict)
                 {
-                    object newKey = DrawGenericField(entry.Key, keyType);
-                    object newValue = DrawGenericField(entry.Value, valueType);
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        object newKey = DrawGenericField(entry.Key, keyType);
+                        object newValue = DrawGenericField(entry.Value, valueType);
 
-                    if (!Equals(newKey, entry.Key))
-                    {
-                        changed = true;
-                        removeKey = entry.Key;
-                        pendingKey = newKey;
-                        pendingValue = newValue;
-                    }
-                    else if (!Equals(newValue, entry.Value))
-                    {
-                        changed = true;
-                        pendingKey = entry.Key;
-                        pendingValue = newValue;
-                    }
+                        if (!Equals(newKey, entry.Key))
+                        {
+                            removeKey = entry.Key;
+                            pendingKey = newKey;
+                            pendingValue = newValue;
+                        }
+                        else if (!Equals(newValue, entry.Value))
+                        {
+                            pendingKey = entry.Key;
+                            pendingValue = newValue;
+                        }
 
-                    if (GUILayout.Button("x", GUILayout.Width(20)))
-                    {
-                        changed = true;
-                        removeKey = entry.Key;
-                        pendingKey = null;
+                        if (GUILayout.Button("x", GUILayout.Width(20)))
+                        {
+                            removeKey = entry.Key;
+                            pendingKey = null;
+                        }
                     }
                 }
-            }
 
-            if (changed)
-            {
-                Undo.RecordObject(target, "Edit Alchemy Dictionary");
                 if (removeKey != null)
                 {
                     dict.Remove(removeKey);
@@ -99,21 +93,17 @@ namespace Thinhnv.UnityTools.AlchemyLite
                     dict[pendingKey] = pendingValue;
                 }
 
-                EditorUtility.SetDirty(target);
-            }
-
-            if (GUILayout.Button("+ Add Entry"))
-            {
-                object newKey = CreateDefaultValue(keyType);
-                if (newKey != null && dict.Contains(newKey))
+                if (GUILayout.Button("+ Add Entry"))
                 {
-                    Debug.LogWarning("Can't add a new entry: the default key already exists. Edit that entry's key first, then add another.");
-                }
-                else
-                {
-                    Undo.RecordObject(target, "Add Alchemy Dictionary Entry");
-                    dict[newKey] = CreateDefaultValue(valueType);
-                    EditorUtility.SetDirty(target);
+                    object newKey = CreateDefaultValue(keyType);
+                    if (newKey != null && dict.Contains(newKey))
+                    {
+                        Debug.LogWarning("Can't add a new entry: the default key already exists. Edit that entry's key first, then add another.");
+                    }
+                    else
+                    {
+                        dict[newKey] = CreateDefaultValue(valueType);
+                    }
                 }
             }
 
