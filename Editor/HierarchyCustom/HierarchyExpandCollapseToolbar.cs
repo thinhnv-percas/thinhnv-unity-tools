@@ -173,8 +173,8 @@ namespace HierarchyCustom
         static Texture2D expandAllIconCache;
         static Texture2D collapseAllIconCache;
 
-        static Texture expandAllIcon => expandAllIconCache ??= CreateChevronTexture(16, pointDown: true);
-        static Texture collapseAllIcon => collapseAllIconCache ??= CreateChevronTexture(16, pointDown: false);
+        static Texture expandAllIcon => expandAllIconCache ??= ExpandCollapseIcons.CreateExpandTexture();
+        static Texture collapseAllIcon => collapseAllIconCache ??= ExpandCollapseIcons.CreateCollapseTexture();
 
         static Texture2D CreateChevronTexture(int size, bool pointDown)
         {
