@@ -116,13 +116,16 @@ namespace HierarchyCustom
         {
             GUI.Box(rect, GUIContent.none, EditorStyles.toolbar);
 
+            var hasSelection = Selection.gameObjects.Length > 0;
+            var scopeLabel = hasSelection ? "Selected" : "All";
+
             var buttonRect = new Rect(rect.xMax - buttonSize - 4, rect.y + (rect.height - buttonSize) / 2, buttonSize, buttonSize);
 
-            DrawIconButton(buttonRect, collapseAllIcon, "Collapse All", () => SetExpandedRecursive(false));
+            DrawIconButton(buttonRect, collapseAllIcon, "Collapse " + scopeLabel, () => SetExpandedRecursive(false));
 
             buttonRect.x -= buttonSize + 2;
 
-            DrawIconButton(buttonRect, expandAllIcon, "Expand All", () => SetExpandedRecursive(true));
+            DrawIconButton(buttonRect, expandAllIcon, "Expand " + scopeLabel, () => SetExpandedRecursive(true));
         }
 
         static void DrawIconButton(Rect rect, Texture icon, string tooltip, Action onClick)
@@ -156,15 +159,27 @@ namespace HierarchyCustom
             var setExpandedRecursive = FindMethod(t_SceneHierarchyWindow, "SetExpandedRecursive");
             if (setExpandedRecursive == null) return;
 
+            var selectedGameObjects = Selection.gameObjects;
+
             foreach (var window in GetHierarchyWindows())
             {
-                for (var i = 0; i < SceneManager.sceneCount; i++)
+                if (selectedGameObjects.Length > 0)
                 {
-                    var scene = SceneManager.GetSceneAt(i);
-                    if (!scene.isLoaded) continue;
+                    // a selection scopes the expand/collapse to just those GameObjects (and their children)
+                    // instead of touching the whole hierarchy
+                    foreach (var go in selectedGameObjects)
+                        setExpandedRecursive.Invoke(window, new object[] { go.GetInstanceID(), expand });
+                }
+                else
+                {
+                    for (var i = 0; i < SceneManager.sceneCount; i++)
+                    {
+                        var scene = SceneManager.GetSceneAt(i);
+                        if (!scene.isLoaded) continue;
 
-                    foreach (var root in scene.GetRootGameObjects())
-                        setExpandedRecursive.Invoke(window, new object[] { root.GetInstanceID(), expand });
+                        foreach (var root in scene.GetRootGameObjects())
+                            setExpandedRecursive.Invoke(window, new object[] { root.GetInstanceID(), expand });
+                    }
                 }
 
                 window.Repaint();
