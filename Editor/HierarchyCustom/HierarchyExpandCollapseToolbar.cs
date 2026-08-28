@@ -89,6 +89,10 @@ namespace HierarchyCustom
                 if (Event.current.type == EventType.MouseDown && new Rect(0, 0, originalPos.width, originalPos.height).Contains(Event.current.mousePosition))
                     SetStaticFieldValue(t_SceneHierarchyWindow, "s_LastInteractedHierarchy", window);
 
+                // SceneHierarchyWindow.OnGUI() normally calls these three in order - the toolbar layout call
+                // (create-object dropdown + default search field) is easy to miss since it draws no visible
+                // rect we push down ourselves, but skipping it silently drops that whole native toolbar
+                InvokeMethod(window, "DoToolbarLayout");
                 InvokeMethod(window, "DoSceneHierarchy");
                 InvokeMethod(window, "ExecuteCommands");
             }
@@ -168,61 +172,11 @@ namespace HierarchyCustom
         }
 
 
-        // solid chevron icon, procedurally rasterized so the tool has no texture/package dependency
-
         static Texture2D expandAllIconCache;
         static Texture2D collapseAllIconCache;
 
         static Texture expandAllIcon => expandAllIconCache ??= ExpandCollapseIcons.CreateExpandTexture();
         static Texture collapseAllIcon => collapseAllIconCache ??= ExpandCollapseIcons.CreateCollapseTexture();
-
-        static Texture2D CreateChevronTexture(int size, bool pointDown)
-        {
-            var margin = size * .16f;
-            var halfThickness = size * .11f;
-
-            var tipY = pointDown ? size - margin : margin;
-            var armY = pointDown ? margin : size - margin;
-
-            var tip = new Vector2(size / 2f, tipY);
-            var armL = new Vector2(margin, armY);
-            var armR = new Vector2(size - margin, armY);
-
-            var pixels = new Color32[size * size];
-
-            for (var designY = 0; designY < size; designY++)
-            {
-                var bufferRow = size - 1 - designY; // texture row 0 is the visual bottom, designY 0 is the visual top
-
-                for (var x = 0; x < size; x++)
-                {
-                    var p = new Vector2(x + .5f, designY + .5f);
-
-                    var distance = Mathf.Min(DistanceToSegment(p, tip, armL), DistanceToSegment(p, tip, armR));
-                    var alpha = Mathf.Clamp01(halfThickness - distance + .5f);
-
-                    pixels[bufferRow * size + x] = new Color(1, 1, 1, alpha);
-                }
-            }
-
-            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                hideFlags = HideFlags.HideAndDontSave,
-                filterMode = FilterMode.Bilinear,
-            };
-
-            texture.SetPixels32(pixels);
-            texture.Apply();
-
-            return texture;
-        }
-
-        static float DistanceToSegment(Vector2 p, Vector2 a, Vector2 b)
-        {
-            var ab = b - a;
-            var t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / ab.sqrMagnitude);
-            return Vector2.Distance(p, a + ab * t);
-        }
 
 
         // minimal reflection helpers into Unity's internal hierarchy window/host view types
