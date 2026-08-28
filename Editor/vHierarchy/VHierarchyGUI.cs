@@ -98,13 +98,13 @@ namespace VHierarchy
 
             void drawing()
             {
-                if (!curEvent.isRepaint) { hierarchyLines_isFirstRowDrawn = false; return; }
+                if (!curEvent.isRepaint) return;
 
                 var goInfo = GetGameObjectInfo(go);
 
                 var drawBackgroundColor = goInfo.hasColor;
                 var drawCustomIcon = goInfo.hasIcon;
-                var drawDefaultIcon = !drawCustomIcon && (isRowBeingRenamed || (!VHierarchyMenu.minimalModeEnabled || (PrefabUtility.IsAddedGameObjectOverride(go) && PrefabUtility.IsPartOfPrefabInstance(go))));
+                var drawDefaultIcon = !drawCustomIcon;
 
                 var makeTriangleBrighter = drawBackgroundColor && !goInfo.isGreyColor && isDarkTheme;
                 var makeNameBrighter = drawBackgroundColor && !goInfo.isGreyColor && isDarkTheme && !isDefaultParent;
@@ -245,9 +245,6 @@ namespace VHierarchy
 
                     var nameRect = rowRect.MoveX(18).AddHeight(1);
 
-                    if (VHierarchyMenu.minimalModeEnabled && !drawCustomIcon && !drawDefaultIcon)
-                        nameRect = nameRect.MoveX(-17);
-
                     if (drawBackgroundColor && !goInfo.isGreyColor)
                         nameRect = nameRect.MoveY(.5f);
 
@@ -324,106 +321,6 @@ namespace VHierarchy
                     ResetGUIColor();
 
                 }
-                void hierarchyLines()
-                {
-                    if (!VHierarchyMenu.hierarchyLinesEnabled) return;
-
-
-                    var lineThickness = 1f;
-                    var lineColor = isDarkTheme ? Greyscale(1, .165f) : Greyscale(0, .23f);
-
-                    var depth = ((rowRect.x - 60) / 14).RoundToInt().Max(0);
-
-                    bool isLastChild(Transform transform) => transform.parent?.GetChild(transform.parent.childCount - 1) == transform;
-                    bool hasChilren(Transform transform) => transform.childCount > 0;
-
-                    void calcVerticalGaps_beforeFirstRowDrawn()
-                    {
-                        if (hierarchyLines_isFirstRowDrawn) return;
-
-                        hierarchyLines_verticalGaps.Clear();
-
-                        var curTransform = go.transform.parent;
-                        var curDepth = depth - 1;
-
-                        while (curTransform != null && curTransform.parent != null)
-                        {
-                            if (isLastChild(curTransform))
-                                hierarchyLines_verticalGaps.Add(curDepth - 1);
-
-                            curTransform = curTransform.parent;
-                            curDepth--;
-                        }
-
-                    }
-                    void updateVerticalGaps_beforeNextRowDrawn()
-                    {
-                        if (isLastChild(go.transform))
-                            hierarchyLines_verticalGaps.Add(depth - 1);
-
-                        if (depth < hierarchyLines_prevRowDepth)
-                            hierarchyLines_verticalGaps.RemoveAll(r => r >= depth);
-
-                    }
-
-                    void drawVerticals()
-                    {
-                        for (int i = 0; i < depth; i++)
-                            if (!hierarchyLines_verticalGaps.Contains(i))
-                                rowRect.SetX(53 + i * 14 - lineThickness / 2)
-                                       .SetWidth(lineThickness)
-                                       .SetHeight(isLastChild(go.transform) && i == depth - 1 ? 8 + lineThickness / 2 : 16)
-                                       .Draw(lineColor);
-
-                    }
-                    void drawHorizontals()
-                    {
-                        if (depth == 0) return;
-
-                        rowRect.MoveX(-21)
-                               .SetHeightFromMid(lineThickness)
-                               .SetWidth(hasChilren(go.transform) ? 7 : 17)
-                               .AddWidthFromRight(-lineThickness / 2f)
-                               .Draw(lineColor);
-
-                    }
-
-
-
-                    calcVerticalGaps_beforeFirstRowDrawn();
-
-                    drawVerticals();
-                    drawHorizontals();
-
-                    updateVerticalGaps_beforeNextRowDrawn();
-
-                    hierarchyLines_prevRowDepth = depth;
-                    hierarchyLines_isFirstRowDrawn = true;
-
-                }
-                void zebraStriping()
-                {
-                    if (!VHierarchyMenu.zebraStripingEnabled) return;
-                    if (isRowSelected) return;
-                    if (goInfo.goData?.colorIndex == 1) return;
-
-
-                    var contrast = isDarkTheme ? .033f : .05f;
-
-
-                    var t = rowRect.y.PingPong(16f) / 16f;
-
-                    if (isRowHovered || isRowSelected)
-                        t = 1;
-
-                    if (t.Approx(0)) return;
-
-
-
-                    fullRowRect.Draw(Greyscale(isDarkTheme ? 1 : 0, contrast * t));
-
-
-                }
                 void highlight()
                 {
                     if (!controller.animatingHighlight) return;
@@ -448,13 +345,11 @@ namespace VHierarchy
                 hideName();
 
                 backgroundColor();
-                hierarchyLines();
 
                 triangle();
                 name();
                 defaultIcon();
                 customIcon();
-                zebraStriping();
                 highlight();
 
             }
@@ -571,35 +466,6 @@ namespace VHierarchy
                 otherComponetns();
 
             }
-            void activationToggle()
-            {
-                if (!VHierarchyMenu.activationToggleEnabled) return;
-                if (!isRowHovered) return;
-
-                var toggleRect = fullRowRect.SetWidth(16).MoveX(1);
-
-
-                SetGUIColor(Greyscale(1, .9f));
-
-                var newActiveSelf = EditorGUI.Toggle(toggleRect, go.activeSelf);
-
-                ResetGUIColor();
-
-
-                if (newActiveSelf == go.activeSelf) return;
-
-                var gos = Selection.gameObjects.Contains(go) ? Selection.gameObjects : new[] { go };
-                var newActive = gos != null && !gos.Any(r => r && r.activeSelf);
-
-                foreach (var r in gos)
-                    r.RecordUndo();
-
-                foreach (var r in gos)
-                    r.SetActive(newActiveSelf);
-
-                GUI.FocusControl(null);
-
-            }
             void defaultParentIndicator()
             {
                 if (!isDefaultParent) return;
@@ -607,7 +473,7 @@ namespace VHierarchy
 
 
                 var drawCustomIcon = GetGameObjectInfo(go).hasIcon;
-                var drawDefaultIcon = !drawCustomIcon && (isRowBeingRenamed || (!VHierarchyMenu.minimalModeEnabled || (PrefabUtility.IsAddedGameObjectOverride(go) && PrefabUtility.IsPartOfPrefabInstance(go))));
+                var drawDefaultIcon = !drawCustomIcon;
 
                 var indicatorRect = rowRect.MoveX(go.name.GetLabelWidth(isBold: true) + 16.5f);
 
@@ -687,16 +553,11 @@ namespace VHierarchy
             drawing();
 
             componentMinimap();
-            activationToggle();
             defaultParentIndicator();
 
             altDrag();
 
         }
-
-        List<int> hierarchyLines_verticalGaps = new();
-        bool hierarchyLines_isFirstRowDrawn;
-        int hierarchyLines_prevRowDepth;
 
         bool mousePressed;
         Vector2 mouseDownPos;
@@ -708,12 +569,7 @@ namespace VHierarchy
 
         public void RowGUI_Scene(Rect rowRect, Scene scene)
         {
-            var fullRowRect = rowRect.SetX(32).SetXMax(rowRect.xMax + 16);
-
-            var isRowHovered = fullRowRect.AddWidthFromRight(32).IsHovered();
-            var isActiveScene = EditorSceneManager.GetActiveScene() == scene;
-            var isStickyHeader = rowRect.y != 0 && EditorGUIUtility.GUIToScreenPoint(rowRect.position).y - window.position.y == 45;
-
+            var isRowHovered = rowRect.SetX(32).SetXMax(rowRect.xMax + 16).AddWidthFromRight(32).IsHovered();
 
             void set_hoveredScene()
             {
@@ -724,205 +580,9 @@ namespace VHierarchy
                     VHierarchy.hoveredScene = scene;
 
             }
-            void sceneSelector()
-            {
-                if (!VHierarchyMenu.sceneSelectorEnabled) return;
-                if (!scene.isLoaded) return;
-
-
-                var nameWidth = (scene.name == "" ? "Untitled" : scene.name).GetLabelWidth(isBold: isActiveScene) + (scene.isDirty ? 5 : 0) + (isActiveScene ? -.5f : -1f);
-                var selectorRect = rowRect.MoveX(18).SetWidth(nameWidth + 16);
-
-                var id = EditorGUIUtility.GUIToScreenRect(selectorRect).GetHashCode();
-                var isPressed = id == pressedSceneSelectorId;
-
-                var highlightName = selectorRect.IsHovered() || (VHierarchySceneSelectorWindow.instance && VHierarchySceneSelectorWindow.instance.sceneToReplace == scene);
-
-
-
-                void dummyRow()
-                {
-                    if (!highlightName) return;
-                    if (!isDarkTheme) return;
-
-                    void background()
-                    {
-                        var backgroundColor = Application.unityVersion.Contains("2021") ? Greyscale(isDarkTheme ? .32f : .9f)
-                                                                                        : Greyscale(isDarkTheme ? .16f : .9f);
-
-                        rowRect.AddWidthFromMid(123).AddHeight(-1).Draw(backgroundColor);
-
-                    }
-                    void tripleDotButton()
-                    {
-                        GUI.DrawTexture(rowRect.SetWidthFromRight(16).MoveX(12), EditorIcons.GetIcon("More"));
-                    }
-                    void sceneIcon()
-                    {
-                        GUI.DrawTexture(rowRect.SetWidth(16), EditorIcons.GetIcon("SceneAsset Icon"));
-                    }
-                    void foldoutIcon()
-                    {
-                        if (scene.rootCount == 0) return;
-
-                        var isSceneExpanded = controller.expandedIds.Contains(scene.handle);
-
-                        GUI.DrawTexture(rowRect.SetWidth(16).MoveX(-15.5f).SetSizeFromMid(13), EditorIcons.GetIcon(isSceneExpanded ? "IN_foldout_on" : "IN_foldout"));
-                    }
-
-                    background();
-                    tripleDotButton();
-                    sceneIcon();
-                    foldoutIcon();
-
-                }
-
-                void dropdownIcon()
-                {
-                    var iconRect = rowRect.MoveY(-.5f).MoveX(nameWidth + 14).SetWidth(16);
-
-
-                    var iconBrightness = highlightName ? 1 : .78f;
-
-                    if (!isActiveScene)
-                        iconBrightness *= .82f;
-
-                    if (isPressed)
-                        iconBrightness *= .83f;
-
-                    if (!isDarkTheme)
-                        iconBrightness = .35f;
-
-
-
-                    SetGUIColor(Greyscale(iconBrightness));
-
-                    GUI.DrawTexture(iconRect, EditorIcons.GetIcon("Dropdown"));
-
-                    ResetGUIColor();
-
-                }
-                void highlightedName()
-                {
-                    if (!curEvent.isRepaint) return;
-                    if (!highlightName) return;
-
-                    var nameRect = rowRect.MoveX(18).SetWidth(nameWidth + 32);
-
-
-
-
-                    var nameStyle = isActiveScene ? "TV LineBold" : "TV Line";
-
-                    var nameText = scene.name == "" ? "Untitled" : scene.name;
-
-                    if (scene.isDirty)
-                        nameText += "*";
-
-
-                    var nameBrightness = 1f;
-
-                    if (isPressed)
-                        nameBrightness *= .83f;
-
-                    if (!isDarkTheme)
-                        nameBrightness = .0f;
-
-
-
-                    SetGUIColor(Greyscale(nameBrightness));
-
-                    GUI.skin.GetStyle(nameStyle).Draw(nameRect, nameText, false, false, true, true);
-
-                    ResetGUIColor();
-
-                }
-                void buttonLogic()
-                {
-                    void mouseDown()
-                    {
-                        var couldBeMouseDown = isStickyHeader && isRowHovered && curEvent.isUsed && !isPressed; // gets used on sticky headers by default row gui
-
-                        if (!curEvent.isMouseDown && !couldBeMouseDown) return;
-                        if (!selectorRect.IsHovered()) return;
-
-
-                        pressedSceneSelectorId = id;
-
-                        mouseDownOnSelectorPos = curEvent.mousePosition;
-
-                        curEvent.Use();
-
-                    }
-                    void mouseUp()
-                    {
-                        var couldBeMouseUp = isStickyHeader && isRowHovered && curEvent.isUsed && isPressed; // gets used on sticky headers by default row gui
-
-                        if (!curEvent.isMouseUp && !couldBeMouseUp) return;
-                        if (!isPressed) return;
-
-
-                        pressedSceneSelectorId = 0;
-
-                        curEvent.Use();
-
-
-                        if (!selectorRect.IsHovered()) return;
-
-                        if (VHierarchySceneSelectorWindow.instance)
-                            VHierarchySceneSelectorWindow.instance.Close();
-                        else
-                            VHierarchySceneSelectorWindow.Open(EditorGUIUtility.GUIToScreenPoint(rowRect.position), scene);
-
-                    }
-                    void mouseDrag()
-                    {
-                        if (!curEvent.isMouseDrag) return;
-                        if (!isPressed) return;
-
-                        if (curEvent.mousePosition.DistanceTo(mouseDownOnSelectorPos) < 3) { curEvent.Use(); return; }
-
-                        pressedSceneSelectorId = 0;
-
-
-                        var sceneHierarchy = window?.GetFieldValue("m_SceneHierarchy");
-
-                        var treeViewController = sceneHierarchy.GetFieldValue("m_TreeView");
-                        var treeViewControllerData = treeViewController.GetMemberValue("data");
-
-                        var item = treeViewControllerData.InvokeMethod<TreeViewItem>("FindItem", scene.handle);
-
-                        treeViewController.GetMemberValue("dragging").InvokeMethod("StartDrag", item, new List<int>());
-
-                    }
-
-
-                    selectorRect.MarkInteractive();
-
-                    mouseDown();
-                    mouseUp();
-                    mouseDrag();
-
-                }
-
-
-
-                dummyRow();
-
-                dropdownIcon();
-                highlightedName();
-                buttonLogic();
-
-            }
-
             set_hoveredScene();
-            sceneSelector();
 
         }
-
-        int pressedSceneSelectorId;
-
-        Vector2 mouseDownOnSelectorPos;
 
 
 

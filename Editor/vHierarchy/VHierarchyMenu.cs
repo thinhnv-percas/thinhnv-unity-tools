@@ -13,13 +13,7 @@ namespace VHierarchy
     class VHierarchyMenu
     {
 
-        public static bool navigationBarEnabled { get => EditorPrefsCached.GetBool("vHierarchy-navigationBarEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-navigationBarEnabled", value); }
-        public static bool sceneSelectorEnabled { get => EditorPrefsCached.GetBool("vHierarchy-sceneSelectorEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-sceneSelectorEnabled", value); }
-        public static bool componentMinimapEnabled { get => EditorPrefsCached.GetBool("vHierarchy-componentMinimapEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-componentMinimapEnabled", value); }
-        public static bool activationToggleEnabled { get => EditorPrefsCached.GetBool("vHierarchy-acctivationToggleEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-acctivationToggleEnabled", value); }
-        public static bool hierarchyLinesEnabled { get => EditorPrefsCached.GetBool("vHierarchy-hierarchyLinesEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-hierarchyLinesEnabled", value); }
-        public static bool minimalModeEnabled { get => EditorPrefsCached.GetBool("vHierarchy-minimalModeEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-minimalModeEnabled", value); }
-        public static bool zebraStripingEnabled { get => EditorPrefsCached.GetBool("vHierarchy-zebraStripingEnabled", false); set => EditorPrefsCached.SetBool("vHierarchy-zebraStripingEnabled", value); }
+        public static bool componentMinimapEnabled { get => EditorPrefsCached.GetBool("vHierarchy-componentMinimapEnabled", true); set => EditorPrefsCached.SetBool("vHierarchy-componentMinimapEnabled", value); }
 
         public static bool toggleActiveEnabled { get => EditorPrefsCached.GetBool("vHierarchy-toggleActiveEnabled", true); set => EditorPrefsCached.SetBool("vHierarchy-toggleActiveEnabled", value); }
         public static bool focusEnabled { get => EditorPrefsCached.GetBool("vHierarchy-focusEnabled", true); set => EditorPrefsCached.SetBool("vHierarchy-focusEnabled", value); }
@@ -36,13 +30,7 @@ namespace VHierarchy
 
         const string dir = "Tools/Thinhnv/vHierarchy/";
 
-        const string navigationBar = dir + "Navigation bar";
-        const string sceneSelector = dir + "Scene selector";
         const string componentMinimap = dir + "Component minimap";
-        const string activationToggle = dir + "Activation toggle";
-        const string hierarchyLines = dir + "Hierarchy lines";
-        const string zebraStriping = dir + "Zebra striping";
-        const string minimalMode = dir + "Minimal mode";
 
         const string toggleActive = dir + "A to toggle active";
         const string focus = dir + "F to focus";
@@ -62,26 +50,8 @@ namespace VHierarchy
         [MenuItem(dir + "Features", false, 1)] static void daasddsas() { }
         [MenuItem(dir + "Features", true, 1)] static bool dadsdasas123() => false;
 
-        [MenuItem(navigationBar, false, 2)] static void dadsaadsdsadasdsadadsas() { navigationBarEnabled = !navigationBarEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(navigationBar, true, 2)] static bool dadsaddasdsasadadsdasadsas() { Menu.SetChecked(navigationBar, navigationBarEnabled); return !pluginDisabled; }
-
-        [MenuItem(sceneSelector, false, 3)] static void dadsaadsdsadassddsadadsas() { sceneSelectorEnabled = !sceneSelectorEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(sceneSelector, true, 3)] static bool dadsaddasdsasadsdadsdasadsas() { Menu.SetChecked(sceneSelector, sceneSelectorEnabled); return !pluginDisabled; }
-
-        [MenuItem(componentMinimap, false, 4)] static void daadsdsadasdadsas() { componentMinimapEnabled = !componentMinimapEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(componentMinimap, true, 4)] static bool dadsadasddasadsas() { Menu.SetChecked(componentMinimap, componentMinimapEnabled); return !pluginDisabled; }
-
-        [MenuItem(activationToggle, false, 5)] static void daadsdsadadsasdadsas() { activationToggleEnabled = !activationToggleEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(activationToggle, true, 5)] static bool dadsadasdsaddasadsas() { Menu.SetChecked(activationToggle, activationToggleEnabled); return !pluginDisabled; }
-
-        [MenuItem(hierarchyLines, false, 6)] static void dadsadadsadadasss() { hierarchyLinesEnabled = !hierarchyLinesEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(hierarchyLines, true, 6)] static bool dadsaddasdasaasddsas() { Menu.SetChecked(hierarchyLines, hierarchyLinesEnabled); return !pluginDisabled; }
-
-        [MenuItem(zebraStriping, false, 7)] static void dadsadadadssadsadass() { zebraStripingEnabled = !zebraStripingEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(zebraStriping, true, 7)] static bool dadsaddadaadsssadsaasddsas() { Menu.SetChecked(zebraStriping, zebraStripingEnabled); return !pluginDisabled; }
-
-        [MenuItem(minimalMode, false, 8)] static void dadsadadasdsdasadadasss() { minimalModeEnabled = !minimalModeEnabled; EditorApplication.RepaintHierarchyWindow(); }
-        [MenuItem(minimalMode, true, 8)] static bool dadsaddadsasdadsasaasddsas() { Menu.SetChecked(minimalMode, minimalModeEnabled); return !pluginDisabled; }
+        [MenuItem(componentMinimap, false, 2)] static void daadsdsadasdadsas() { componentMinimapEnabled = !componentMinimapEnabled; EditorApplication.RepaintHierarchyWindow(); }
+        [MenuItem(componentMinimap, true, 2)] static bool dadsadasddasadsas() { Menu.SetChecked(componentMinimap, componentMinimapEnabled); return !pluginDisabled; }
 
 
 

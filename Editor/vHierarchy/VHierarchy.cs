@@ -34,242 +34,6 @@ namespace VHierarchy
     public static class VHierarchy
     {
 
-        static void WrappedGUI(EditorWindow window)
-        {
-            var navbarHeight = 26;
-
-            void navbarGui()
-            {
-                if (!navbars_byWindow.ContainsKey(window))
-                    navbars_byWindow[window] = new VHierarchyNavbar(window);
-
-                var navbarRect = window.position.SetPos(0, 0).SetHeight(navbarHeight);
-
-
-                navbars_byWindow[window].OnGUI(navbarRect);
-
-            }
-            void defaultGuiWithOffset()
-            {
-                var defaultTopBarHeight = 20;
-                var topOffset = navbarHeight - defaultTopBarHeight;
-
-                var m_Pos_original = window.GetFieldValue<Rect>("m_Pos");
-
-
-
-
-                GUI.BeginGroup(m_Pos_original.SetPos(0, 0).AddHeightFromBottom(-topOffset));
-
-                window.SetFieldValue("m_Pos", m_Pos_original.AddHeightFromBottom(-topOffset));
-
-
-                try
-                {
-                    if (curEvent.isMouseDown && m_Pos_original.IsHovered())
-                        t_SceneHierarchyWindow.SetMemberValue("s_LastInteractedHierarchy", window);
-
-                    window.InvokeMethod("DoSceneHierarchy");
-                    window.InvokeMethod("ExecuteCommands");
-
-                    // same as SceneHierarchyWindow.OnGUI() but without DoToolbarLayout():
-
-                }
-                catch (System.Exception exception)
-                {
-                    if (exception.InnerException is ExitGUIException)
-                        throw exception.InnerException;
-                    else
-                        throw exception;
-
-                    // GUIUtility.ExitGUI() works by throwing ExitGUIException, which just exits imgui loop and doesn't appear in console
-                    // but if ExitGUI is called from a reflected method (DoSceneHierarchy in this case), the exception becomes TargetInvokationException
-                    // which gets logged to console (only if debugger is attached, for some reason)
-                    // so here in such cases we rethrow the original ExitGUIException
-
-                }
-
-
-                window.SetFieldValue("m_Pos", m_Pos_original);
-
-                GUI.EndGroup();
-
-            }
-            void shadow()
-            {
-                if (!curEvent.isRepaint) return;
-
-                var shadowLength = 30;
-                var shadowPos = 21;
-                var shadowGreyscale = isDarkTheme ? .1f : .28f;
-                var shadowAlpha = isDarkTheme ? .35f : .15f;
-
-                var minScrollPos = 10;
-                var maxScrollPos = 20;
-
-                if (StageUtility.GetCurrentStage() is PrefabStage)
-                    shadowPos += 30;
-                else if (EditorSceneManager.loadedRootSceneCount > 1)
-                    shadowPos += 16;
-
-
-
-                var scrollPos = window.GetMemberValue("m_SceneHierarchy").GetMemberValue<TreeViewState>("m_TreeViewState").scrollPos.y;
-
-                if (scrollPos <= minScrollPos) return;
-
-                var opacity = ((scrollPos - minScrollPos) / (maxScrollPos - minScrollPos)).Clamp01();
-
-
-                var rectWidth = window.position.width;// - 12;
-
-                var rect = window.position.SetPos(0, 0).MoveY(shadowPos).SetHeight(shadowLength).SetWidth(rectWidth);
-
-
-
-                var clipAtY = navbarHeight + 1;
-
-                if (EditorSceneManager.loadedRootSceneCount > 1)
-                    clipAtY += 16;
-
-
-                GUI.BeginClip(window.position.SetPos(0, clipAtY));
-
-                rect.MoveY(-clipAtY).DrawCurtainDown(Greyscale(shadowGreyscale, shadowAlpha * opacity));
-
-                GUI.EndClip();
-
-            }
-
-
-
-            var doNavbarFirst = navbars_byWindow.ContainsKey(window) && navbars_byWindow[window].isSearchActive;
-
-            if (doNavbarFirst)
-                navbarGui();
-
-            GUILayout.Space(0); // to fix GameAnalytics accessing lastRect for some reason
-
-            defaultGuiWithOffset();
-            shadow();
-
-            if (!doNavbarFirst)
-                navbarGui();
-
-        }
-
-        static Dictionary<EditorWindow, VHierarchyNavbar> navbars_byWindow = new();
-
-
-
-        static void UpdateGUIWrapping(EditorWindow window)
-        {
-            if (!window.hasFocus) return;
-
-            var curOnGUIMethod = window.GetMemberValue("m_Parent").GetMemberValue<System.Delegate>("m_OnGUI").Method;
-
-            var isWrapped = curOnGUIMethod == mi_WrappedGUI;
-            var shouldBeWrapped = VHierarchyMenu.navigationBarEnabled;
-
-            void wrap()
-            {
-                var hostView = window.GetMemberValue("m_Parent");
-
-                var newDelegate = typeof(VHierarchy).GetMethod(nameof(WrappedGUI), maxBindingFlags).CreateDelegate(t_EditorWindowDelegate, window);
-
-                hostView.SetMemberValue("m_OnGUI", newDelegate);
-
-                window.Repaint();
-
-            }
-            void unwrap()
-            {
-                var hostView = window.GetMemberValue("m_Parent");
-
-                var originalDelegate = hostView.InvokeMethod("CreateDelegate", "OnGUI");
-
-                hostView.SetMemberValue("m_OnGUI", originalDelegate);
-
-                window.Repaint();
-
-            }
-
-
-            if (shouldBeWrapped && !isWrapped)
-                wrap();
-
-            if (!shouldBeWrapped && isWrapped)
-                unwrap();
-
-        }
-        static void UpdateGUIWrappingForAllHierarchies() => allHierarchies.ForEach(r => UpdateGUIWrapping(r));
-
-        static void OnDomainReloaded() => toCallInGUI += UpdateGUIWrappingForAllHierarchies;
-
-        static void OnWindowUnmaximized() => UpdateGUIWrappingForAllHierarchies();
-
-        static void OnHierarchyFocused() => UpdateGUIWrapping(EditorWindow.focusedWindow);
-
-        static void OnDelayCall() => UpdateGUIWrappingForAllHierarchies();
-
-
-
-
-
-        static void CheckIfFocusedWindowChanged()
-        {
-            if (prevFocusedWindow != EditorWindow.focusedWindow)
-                if (EditorWindow.focusedWindow?.GetType() == t_SceneHierarchyWindow)
-                    OnHierarchyFocused();
-
-            prevFocusedWindow = EditorWindow.focusedWindow;
-
-        }
-
-        static EditorWindow prevFocusedWindow;
-
-
-
-        static void CheckIfWindowWasUnmaximized()
-        {
-            var isMaximized = EditorWindow.focusedWindow?.maximized == true;
-
-            if (!isMaximized && wasMaximized)
-                OnWindowUnmaximized();
-
-            wasMaximized = isMaximized;
-
-        }
-
-        static bool wasMaximized;
-
-
-
-        static void OnSomeGUI()
-        {
-            toCallInGUI?.Invoke();
-            toCallInGUI = null;
-
-            CheckIfFocusedWindowChanged();
-
-        }
-
-        static void ProjectWindowItemOnGUI(string _, Rect __) => OnSomeGUI();
-        static void HierarchyWindowItemOnGUI(int _, Rect __) => OnSomeGUI();
-
-        static System.Action toCallInGUI;
-
-
-
-        static void DelayCallLoop()
-        {
-            OnDelayCall();
-
-            EditorApplication.delayCall -= DelayCallLoop;
-            EditorApplication.delayCall += DelayCallLoop;
-
-        }
-
 
 
 
@@ -1326,7 +1090,7 @@ namespace VHierarchy
 
             if (lastEvent.alt != wasAlt)
                 if (EditorWindow.mouseOverWindow is EditorWindow hoveredWindow)
-                    if (hoveredWindow.GetType() == t_SceneHierarchyWindow || hoveredWindow is VHierarchySceneSelectorWindow)
+                    if (hoveredWindow.GetType() == t_SceneHierarchyWindow)
                         hoveredWindow.Repaint();
 
             wasAlt = lastEvent.alt;
@@ -1460,22 +1224,6 @@ namespace VHierarchy
                 EditorApplication.hierarchyWindowItemOnGUI -= RowGUI;
                 EditorApplication.hierarchyWindowItemOnGUI = RowGUI + EditorApplication.hierarchyWindowItemOnGUI;
 
-
-
-
-                // wrapping updaters            
-
-                EditorApplication.projectWindowItemOnGUI -= ProjectWindowItemOnGUI;
-                EditorApplication.projectWindowItemOnGUI += ProjectWindowItemOnGUI;
-
-                EditorApplication.hierarchyWindowItemOnGUI -= HierarchyWindowItemOnGUI;
-                EditorApplication.hierarchyWindowItemOnGUI += HierarchyWindowItemOnGUI;
-
-                EditorApplication.delayCall -= DelayCallLoop;
-                EditorApplication.delayCall += DelayCallLoop;
-
-                EditorApplication.update -= CheckIfFocusedWindowChanged;
-                EditorApplication.update += CheckIfFocusedWindowChanged;
 
 
 
@@ -1818,8 +1566,6 @@ namespace VHierarchy
 
             // EditorApplication.delayCall += () => removeDeletedBookmarks();
 
-            OnDomainReloaded();
-
         }
 
         public static VHierarchyData data;
@@ -1833,14 +1579,10 @@ namespace VHierarchy
         static IEnumerable<EditorWindow> _allHierarchies;
 
         static Type t_SceneHierarchyWindow = typeof(Editor).Assembly.GetType("UnityEditor.SceneHierarchyWindow");
-        static Type t_HostView = typeof(Editor).Assembly.GetType("UnityEditor.HostView");
-        static Type t_EditorWindowDelegate = t_HostView.GetNestedType("EditorWindowDelegate", maxBindingFlags);
         static Type t_Unsupported = typeof(Editor).Assembly.GetType("UnityEditor.Unsupported");
 
         static Type t_VTabs = Type.GetType("VTabs.VTabs") ?? Type.GetType("VTabs.VTabs, VTabs, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null");
         static Type t_VFavorites = Type.GetType("VFavorites.VFavorites") ?? Type.GetType("VFavorites.VFavorites, VFavorites, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null");
-
-        static MethodInfo mi_WrappedGUI = typeof(VHierarchy).GetMethod(nameof(WrappedGUI), maxBindingFlags);
 
 
 
