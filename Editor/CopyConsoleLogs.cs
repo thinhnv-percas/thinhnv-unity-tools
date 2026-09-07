@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
 using UnityEditor;
@@ -66,14 +67,24 @@ namespace ThinhnvTools
                 return;
             }
 
-            MethodInfo getCount = logEntriesType.GetMethod("GetCount", BindingFlags.Public | BindingFlags.Static);
-            MethodInfo startGetEntries = logEntriesType.GetMethod("StartGetEntries", BindingFlags.Public | BindingFlags.Static);
-            MethodInfo endGetEntries = logEntriesType.GetMethod("EndGetEntries", BindingFlags.Public | BindingFlags.Static);
-            MethodInfo getEntryInternal = logEntriesType.GetMethod("GetEntryInternal", BindingFlags.Public | BindingFlags.Static);
-            if (getCount == null || startGetEntries == null || endGetEntries == null || getEntryInternal == null)
+            // Names below try the current (Unity 2018 through Unity 6) spelling first, with an
+            // older/alternate spelling as fallback in case a given Editor version differs.
+            MethodInfo getCount = FindMethod(logEntriesType, "GetCount");
+            MethodInfo startGetEntries = FindMethod(logEntriesType, "StartGettingEntries", "StartGetEntries");
+            MethodInfo endGetEntries = FindMethod(logEntriesType, "EndGettingEntries", "EndGetEntries");
+            MethodInfo getEntryInternal = FindMethod(logEntriesType, "GetEntryInternal");
+
+            var missingMethods = new List<string>();
+            if (getCount == null) missingMethods.Add("GetCount");
+            if (startGetEntries == null) missingMethods.Add("StartGettingEntries");
+            if (endGetEntries == null) missingMethods.Add("EndGettingEntries");
+            if (getEntryInternal == null) missingMethods.Add("GetEntryInternal");
+
+            if (missingMethods.Count > 0)
             {
                 EditorUtility.DisplayDialog("Copy Console Logs",
-                    "Unity's internal Console API is missing an expected method on this Editor version.", "OK");
+                    "Unity's internal Console API is missing expected method(s) on this Editor version: " +
+                    string.Join(", ", missingMethods) + ".", "OK");
                 return;
             }
 
@@ -136,6 +147,20 @@ namespace ThinhnvTools
                 if (field != null)
                 {
                     return field;
+                }
+            }
+
+            return null;
+        }
+
+        private static MethodInfo FindMethod(Type type, params string[] candidateNames)
+        {
+            foreach (string name in candidateNames)
+            {
+                MethodInfo method = type.GetMethod(name, BindingFlags.Public | BindingFlags.Static);
+                if (method != null)
+                {
+                    return method;
                 }
             }
 
