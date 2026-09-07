@@ -12,14 +12,16 @@ namespace ThinhnvTools
     /// clipboard, one per line, prefixed with [Log]/[Warning]/[Error] where the type could be read.
     ///
     /// The Console's contents aren't exposed by any public API, so this reads them through
-    /// UnityEditor.LogEntries/LogEntry via reflection — undocumented, internal-only classes that
-    /// Unity could change in a future version. If a piece of that internal API is missing, this
-    /// degrades gracefully (skips the type prefix, or reports that it couldn't reach the Console
-    /// at all) instead of throwing.
+    /// UnityEditor.LogEntries/LogEntry via reflection — undocumented, internal-only classes whose
+    /// exact shape (field/method names, even which assembly they live in) has shifted between
+    /// Unity versions. Every lookup here is resolved by name at runtime and null/try-checked, so a
+    /// mismatch on some future Editor version degrades to a clear error message (with the actual
+    /// exception, to help pin down what changed) instead of an unhandled exception.
     /// </summary>
     public static class CopyConsoleLogs
     {
-        // Bit flags from Unity's internal (undocumented) LogMessageFlags enum.
+        // Bit flags from Unity's internal (undocumented) LogMessageFlags enum. These have been
+        // stable from Unity 2018 through Unity 6, but aren't a public contract.
         private const int ModeFatal = 1 << 4;
         private const int ModeScriptingError = 1 << 9;
         private const int ModeScriptingWarning = 1 << 10;
@@ -30,13 +32,37 @@ namespace ThinhnvTools
         [MenuItem("Tools/Thinhnv/Copy Console Logs %#l")]
         private static void CopyToClipboard()
         {
-            Type logEntriesType = Type.GetType("UnityEditor.LogEntries,UnityEditor");
-            Type logEntryType = Type.GetType("UnityEditor.LogEntry,UnityEditor");
+            try
+            {
+                CopyToClipboardInternal();
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+                EditorUtility.DisplayDialog("Copy Console Logs",
+                    "Could not read the Console through Unity's internal API on this Editor version.\n\n" +
+                    $"{e.GetType().Name}: {e.Message}\n\n" +
+                    "The full exception was logged to the Console — please share it so the reflection " +
+                    "lookup can be updated for this Unity version.",
+                    "OK");
+            }
+        }
+
+        private static void CopyToClipboardInternal()
+        {
+            // Resolve LogEntries/LogEntry through the assembly a known public Editor type lives
+            // in, rather than guessing the assembly's display name (e.g. "UnityEditor" vs
+            // "UnityEditor.CoreModule") with Type.GetType("Name,Assembly") — that name has
+            // differed across Unity versions and is a common cause of the lookup silently
+            // returning null.
+            Assembly editorAssembly = typeof(EditorApplication).Assembly;
+            Type logEntriesType = editorAssembly.GetType("UnityEditor.LogEntries");
+            Type logEntryType = editorAssembly.GetType("UnityEditor.LogEntry");
             if (logEntriesType == null || logEntryType == null)
             {
                 EditorUtility.DisplayDialog("Copy Console Logs",
-                    "Could not access Unity's internal Console API (UnityEditor.LogEntries). " +
-                    "This Editor version may have changed its internal layout.", "OK");
+                    "Could not find Unity's internal Console API (UnityEditor.LogEntries) on this Editor version.",
+                    "OK");
                 return;
             }
 
@@ -51,16 +77,26 @@ namespace ThinhnvTools
                 return;
             }
 
-            int count = (int)getCount.Invoke(null, null);
+            ParameterInfo[] getEntryParams = getEntryInternal.GetParameters();
+            if (getEntryParams.Length != 2)
+            {
+                EditorUtility.DisplayDialog("Copy Console Logs",
+                    $"Unity's internal GetEntryInternal has an unexpected signature on this Editor version " +
+                    $"({getEntryParams.Length} parameter(s) instead of 2).", "OK");
+                return;
+            }
+
+            int count = Convert.ToInt32(getCount.Invoke(null, null));
             if (count == 0)
             {
                 EditorUtility.DisplayDialog("Copy Console Logs", "The Console is empty.", "OK");
                 return;
             }
 
-            FieldInfo messageField = logEntryType.GetField("message", BindingFlags.Public | BindingFlags.Instance);
-            FieldInfo modeField = logEntryType.GetField("mode", BindingFlags.Public | BindingFlags.Instance);
+            FieldInfo messageField = FindField(logEntryType, "message", "condition");
+            FieldInfo modeField = FindField(logEntryType, "mode", "flags");
             object entry = Activator.CreateInstance(logEntryType);
+            var getEntryArgs = new object[2];
 
             var sb = new StringBuilder();
             startGetEntries.Invoke(null, null);
@@ -68,10 +104,12 @@ namespace ThinhnvTools
             {
                 for (int i = 0; i < count; i++)
                 {
-                    getEntryInternal.Invoke(null, new object[] { i, entry });
+                    getEntryArgs[0] = i;
+                    getEntryArgs[1] = entry;
+                    getEntryInternal.Invoke(null, getEntryArgs);
 
                     string message = messageField?.GetValue(entry) as string ?? "";
-                    string prefix = modeField != null ? TypePrefix((int)modeField.GetValue(entry)) : "";
+                    string prefix = modeField != null ? TypePrefix(Convert.ToInt32(modeField.GetValue(entry))) : "";
 
                     if (i > 0)
                     {
@@ -88,6 +126,20 @@ namespace ThinhnvTools
 
             EditorGUIUtility.systemCopyBuffer = sb.ToString();
             Debug.Log($"Copied {count} console entrie(s) to clipboard.");
+        }
+
+        private static FieldInfo FindField(Type type, params string[] candidateNames)
+        {
+            foreach (string name in candidateNames)
+            {
+                FieldInfo field = type.GetField(name, BindingFlags.Public | BindingFlags.Instance);
+                if (field != null)
+                {
+                    return field;
+                }
+            }
+
+            return null;
         }
 
         private static string TypePrefix(int mode)
