@@ -5,8 +5,7 @@ using UnityEngine;
 /// <summary>
 /// Generic inspector for every <see cref="MonoBehaviour"/>: draws the default inspector,
 /// then a button for each method decorated with <see cref="ContextMenuAttribute"/> — including
-/// methods with parameters, whose arguments are drawn as fields (see <see cref="ContextMenuButtonGUI"/>) —
-/// and finally the read-only live values of members marked for display (see <see cref="ShowInSpectorGUI"/>).
+/// methods with parameters, whose arguments are drawn as fields (see <see cref="ContextMenuButtonGUI"/>).
 /// Buttons run on every selected object, honouring <see cref="CanEditMultipleObjects"/>.
 /// </summary>
 [CanEditMultipleObjects]
@@ -20,20 +19,14 @@ public class ContextMenuButtonEditor : Editor
     {
         DrawDefaultInspector();
         ContextMenuButtonGUI.Draw(targets, argCache);
-        ShowInSpectorGUI.Draw(targets);
     }
-
-    /// <summary>Keeps displayed values live; false (no repaint cost) unless the target actually has any.</summary>
-    public override bool RequiresConstantRepaint() => ShowInSpectorGUI.RequiresConstantRepaint(target);
 }
 
 /// <summary>
 /// Generic inspector for every <see cref="ScriptableObject"/>: draws the default inspector,
 /// then a button for each <see cref="ContextMenuAttribute"/> method (parameterless or with
-/// parameter fields), then the read-only live values of members marked for display
-/// (see <see cref="ShowInSpectorGUI"/>). This lets any SO expose one-click editor actions
-/// (e.g. ObjectDefinitionSO's "Apply Base Mass To Prefabs") and computed state without needing
-/// its own custom editor.
+/// parameter fields). This lets any SO expose one-click editor actions (e.g. ObjectDefinitionSO's
+/// "Apply Base Mass To Prefabs") without needing its own custom editor.
 /// </summary>
 [CanEditMultipleObjects]
 [CustomEditor(typeof(ScriptableObject), true)]
@@ -45,8 +38,5 @@ public class ScriptableObjectContextMenuButtonEditor : Editor
     {
         DrawDefaultInspector();
         ContextMenuButtonGUI.Draw(targets, argCache);
-        ShowInSpectorGUI.Draw(targets);
     }
-
-    public override bool RequiresConstantRepaint() => ShowInSpectorGUI.RequiresConstantRepaint(target);
 }
