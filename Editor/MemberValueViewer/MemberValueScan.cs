@@ -39,17 +39,31 @@ public readonly struct MemberValueEntry
     /// <summary>True when Unity or the BCL declares this member, rather than project code.</summary>
     public readonly bool isExternal;
 
+    /// <summary>Parameters to fill before a method can run; empty for fields, properties and getters.</summary>
+    public readonly ParameterInfo[] parameters;
+
     public string name => info.Name;
 
     public string declaringType => info.DeclaringType != null ? info.DeclaringType.Name : string.Empty;
 
-    internal MemberValueEntry(MemberInfo info, MemberValueKind kind, Type valueType, bool isStatic, bool isExternal)
+    /// <summary>False for a void method, whose only observable result is what it did.</summary>
+    public bool returnsValue => valueType != typeof(void);
+
+    /// <summary>
+    /// True when the member cannot simply be read: a method that takes arguments, or returns nothing.
+    /// These are only ever run from an explicit button press.
+    /// </summary>
+    public bool needsCall => kind == MemberValueKind.Method && (parameters.Length > 0 || !returnsValue);
+
+    internal MemberValueEntry(MemberInfo info, MemberValueKind kind, Type valueType, bool isStatic, bool isExternal,
+        ParameterInfo[] parameters)
     {
         this.info = info;
         this.kind = kind;
         this.valueType = valueType;
         this.isStatic = isStatic;
         this.isExternal = isExternal;
+        this.parameters = parameters ?? MemberValueScan.NoParameters;
         label = ObjectNames.NicifyVariableName(info.Name);
     }
 
@@ -60,6 +74,16 @@ public readonly struct MemberValueEntry
     /// </summary>
     public bool TryRead(object owner, out object value, out string error)
     {
+        return TryInvoke(owner, null, out value, out error);
+    }
+
+    /// <summary>
+    /// Same as <see cref="TryRead"/>, but passes <paramref name="args"/> to a method that takes parameters.
+    /// A void method reports success with a null <paramref name="value"/>; read <see cref="returnsValue"/>
+    /// to tell that apart from a method that genuinely returned null.
+    /// </summary>
+    public bool TryInvoke(object owner, object[] args, out object value, out string error)
+    {
         value = null;
         error = null;
         object instance = isStatic ? null : owner;
@@ -68,7 +92,7 @@ public readonly struct MemberValueEntry
         {
             if (info is FieldInfo field) value = field.GetValue(instance);
             else if (info is PropertyInfo property) value = property.GetValue(instance);
-            else if (info is MethodInfo method) value = method.Invoke(instance, null);
+            else if (info is MethodInfo method) value = method.Invoke(instance, args);
             else
             {
                 error = "unsupported member";
@@ -89,8 +113,9 @@ public readonly struct MemberValueEntry
 }
 
 /// <summary>
-/// Enumerates every value-bearing member of a type — fields (serialized or not), readable properties and
-/// zero-argument methods that return something — without needing any attribute on them. Results are cached
+/// Enumerates every member of a type worth showing — fields (serialized or not), readable properties, and
+/// methods, including the void and parameterised ones that can only be run from a button — without needing
+/// any attribute on them. Results are cached
 /// per type, since the viewer repaints far too often to redo reflection each frame.
 /// <para>
 /// The scan is deliberately a superset: static and Unity-declared members are included and tagged, and the
@@ -102,6 +127,8 @@ public static class MemberValueScan
     private const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Static |
                                        BindingFlags.Public | BindingFlags.NonPublic |
                                        BindingFlags.DeclaredOnly;
+
+    internal static readonly ParameterInfo[] NoParameters = new ParameterInfo[0];
 
     private static readonly MemberValueEntry[] None = new MemberValueEntry[0];
     private static readonly Dictionary<Type, MemberValueEntry[]> Cache = new Dictionary<Type, MemberValueEntry[]>();
@@ -149,7 +176,7 @@ public static class MemberValueScan
             if (field.IsDefined(typeof(CompilerGeneratedAttribute), false) || field.Name.IndexOf('<') >= 0) continue;
             if (IsObsoleteError(field)) continue;
 
-            into.Add(new MemberValueEntry(field, MemberValueKind.Field, field.FieldType, field.IsStatic, external));
+            into.Add(new MemberValueEntry(field, MemberValueKind.Field, field.FieldType, field.IsStatic, external, null));
         }
     }
 
@@ -163,7 +190,7 @@ public static class MemberValueScan
             if (!seen.Add(property.Name)) continue;
 
             into.Add(new MemberValueEntry(property, MemberValueKind.Property, property.PropertyType,
-                property.GetMethod.IsStatic, external));
+                property.GetMethod.IsStatic, external, null));
         }
     }
 
@@ -173,11 +200,22 @@ public static class MemberValueScan
         {
             // IsSpecialName covers property accessors, operators and event add/remove — all duplicates here.
             if (method.IsSpecialName || method.IsGenericMethodDefinition) continue;
-            if (method.ReturnType == typeof(void) || method.GetParameters().Length > 0) continue;
             if (IsObsoleteError(method)) continue;
+
+            // ref/out parameters cannot be filled from a boxed argument array, so the method is uncallable.
+            ParameterInfo[] parameters = method.GetParameters();
+            bool byRef = false;
+            foreach (ParameterInfo parameter in parameters)
+            {
+                if (parameter.ParameterType.IsByRef) byRef = true;
+            }
+            if (byRef) continue;
+
+            // Overloads share a name, so only the first is kept — the viewer has no way to pick between them.
             if (!seen.Add(method.Name)) continue;
 
-            into.Add(new MemberValueEntry(method, MemberValueKind.Method, method.ReturnType, method.IsStatic, external));
+            into.Add(new MemberValueEntry(method, MemberValueKind.Method, method.ReturnType, method.IsStatic,
+                external, parameters.Length > 0 ? parameters : NoParameters));
         }
     }
 

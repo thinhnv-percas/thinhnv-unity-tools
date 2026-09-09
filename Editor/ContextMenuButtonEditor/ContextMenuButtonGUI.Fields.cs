@@ -17,7 +17,11 @@ public static partial class ContextMenuButtonGUI
 
     /// <summary>Draw an editor field for a single parameter value; unsupported types are shown read-only.</summary>
     /// <param name="key">Unique path for this value, used to persist collection foldout state.</param>
-    private static object DrawField(string label, Type type, object value, string key)
+    /// <remarks>
+    /// Internal rather than private so <see cref="MemberValueViewerWindow"/> can reuse it for the arguments
+    /// of the methods it calls — the two need identical parameter fields, and one implementation is enough.
+    /// </remarks>
+    internal static object DrawField(string label, Type type, object value, string key)
     {
         if (type == typeof(int)) return EditorGUILayout.IntField(label, (int)(value ?? 0));
         if (type == typeof(long)) return EditorGUILayout.LongField(label, (long)(value ?? 0L));
