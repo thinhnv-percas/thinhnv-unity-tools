@@ -8,12 +8,14 @@ using UnityEngine;
 /// Shared drawing for the generic inspectors: renders a read-only "Show In Spector" section with the
 /// LIVE value of every member tagged <c>[Tooltip("ShowInSpector")]</c>. Three member kinds are picked up:
 /// <list type="bullet">
-/// <item>non-serialized fields (private/internal without <c>[SerializeField]</c>, <c>[NonSerialized]</c>,
-/// static, readonly, or of a type Unity cannot serialize) — serialized ones already show in the
-/// default inspector;</item>
+/// <item>fields of any visibility, static and readonly included — the point is the non-serialized ones
+/// the default inspector never draws, but a marked serialized field is shown too rather than
+/// silently dropped;</item>
 /// <item>readable properties without index parameters;</item>
 /// <item>zero-parameter, non-generic methods that return a value.</item>
 /// </list>
+/// A marker on anything else — a void method, a method with arguments, a write-only property — is drawn
+/// as a one-line reason, so a marker the author wrote is never silently ignored.
 /// <example>
 /// <code>
 /// [Tooltip("ShowInSpector")] private int hitCount;                  // non-serialized field
@@ -97,6 +99,12 @@ public static partial class ShowInSpectorGUI
 
     private static void DrawMember(Member member, UnityEngine.Object[] targets)
     {
+        if (member.unsupported != null)
+        {
+            EditorGUILayout.LabelField(member.label, $"— {member.unsupported}");
+            return;
+        }
+
         // Read every target so a multi-object selection can fall back to the mixed-value dash.
         if (!member.TryRead(targets[0], out object value, out string error))
         {
@@ -158,8 +166,9 @@ public static partial class ShowInSpectorGUI
         foreach (FieldInfo field in type.GetFields(MemberFlags))
         {
             if (!TryGetMarker(field, out string label)) continue;
-            // Serialized fields are already drawn by DrawDefaultInspector; showing them twice is noise.
-            if (IsUnitySerialized(field)) continue;
+            // Every marked field is drawn, serialized or not: the marker is an explicit request to see the
+            // value, and silently dropping it (a serialized field shows in the default inspector anyway)
+            // just looks like the tool is broken.
             into.Add(new Member(field, label ?? ObjectNames.NicifyVariableName(field.Name), field.FieldType));
         }
     }
@@ -169,12 +178,14 @@ public static partial class ShowInSpectorGUI
         foreach (PropertyInfo property in type.GetProperties(MemberFlags))
         {
             if (!TryGetMarker(property, out string label)) continue;
-            // Write-only properties have nothing to show, and indexers need arguments we don't have.
-            if (!property.CanRead || property.GetIndexParameters().Length > 0) continue;
             // The walk runs derived-first, so the most-derived override is the one that sticks.
             if (!seen.Add(property.Name)) continue;
-            into.Add(new Member(property, label ?? ObjectNames.NicifyVariableName(property.Name),
-                property.PropertyType));
+
+            string name = label ?? ObjectNames.NicifyVariableName(property.Name);
+            // Nothing to read from these, but say so rather than ignoring a marker the author wrote.
+            if (property.GetIndexParameters().Length > 0) into.Add(new Member(name, "indexer, needs arguments"));
+            else if (!property.CanRead) into.Add(new Member(name, "write-only, no getter"));
+            else into.Add(new Member(property, name, property.PropertyType));
         }
     }
 
@@ -183,13 +194,17 @@ public static partial class ShowInSpectorGUI
         foreach (MethodInfo method in type.GetMethods(MemberFlags))
         {
             if (!TryGetMarker(method, out string label)) continue;
-            // Only a plain value-returning getter can be invoked blindly on every repaint.
-            if (method.ReturnType == typeof(void) || method.IsGenericMethodDefinition) continue;
-            if (method.GetParameters().Length > 0) continue;
             // Zero-arg means one method per name, so a repeat here is an override of a marked base method.
             if (!seen.Add(method.Name)) continue;
+
             string name = label ?? $"{ObjectNames.NicifyVariableName(method.Name)} ()";
-            into.Add(new Member(method, name, method.ReturnType));
+            int parameters = method.GetParameters().Length;
+            // Only a plain value-returning getter can be invoked blindly on every repaint — the rest get a
+            // one-line reason, so a marker never just does nothing.
+            if (method.ReturnType == typeof(void)) into.Add(new Member(name, "returns void, nothing to show"));
+            else if (method.IsGenericMethodDefinition) into.Add(new Member(name, "generic method"));
+            else if (parameters > 0) into.Add(new Member(name, $"takes {parameters} argument(s) — use [ContextMenu]"));
+            else into.Add(new Member(method, name, method.ReturnType));
         }
     }
 
@@ -215,28 +230,10 @@ public static partial class ShowInSpectorGUI
         return false;
     }
 
-    /// <summary>Mirrors Unity's field serialization rules closely enough to spot fields it already draws.</summary>
-    private static bool IsUnitySerialized(FieldInfo field)
-    {
-        if (field.IsStatic || field.IsLiteral || field.IsInitOnly) return false;
-        if (field.IsDefined(typeof(NonSerializedAttribute), false)) return false;
-        if (field.IsDefined(typeof(SerializeReference), false)) return true;
-        if (!field.IsPublic && !field.IsDefined(typeof(SerializeField), false)) return false;
-        return IsSerializableType(field.FieldType);
-    }
-
-    private static bool IsSerializableType(Type type)
-    {
-        if (type.IsArray) return type.GetArrayRank() == 1 && IsSerializableType(type.GetElementType());
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
-            return IsSerializableType(type.GetGenericArguments()[0]);
-        if (type.IsPrimitive || type.IsEnum || type == typeof(string)) return true;
-        if (typeof(UnityEngine.Object).IsAssignableFrom(type)) return true;
-        // Custom structs/classes need [Serializable]; open generics are never serialized by Unity.
-        return !type.IsGenericType && type.IsDefined(typeof(SerializableAttribute), false);
-    }
-
-    /// <summary>One marked field / property / method, resolved once and read per repaint.</summary>
+    /// <summary>
+    /// One marked member: either something readable (resolved once, read per repaint) or — when
+    /// <see cref="unsupported"/> is set — a marker we cannot read, kept so it can say why.
+    /// </summary>
     private readonly struct Member
     {
         private readonly MemberInfo info;
@@ -244,6 +241,9 @@ public static partial class ShowInSpectorGUI
 
         public readonly string label;
         public readonly Type valueType;
+
+        /// <summary>Why this marker cannot be shown, or null when the member is readable.</summary>
+        public readonly string unsupported;
 
         /// <summary>Stable path used to key collection foldout state, so two members never share a toggle.</summary>
         public string key => $"{info.DeclaringType?.FullName}.{info.Name}";
@@ -253,9 +253,19 @@ public static partial class ShowInSpectorGUI
             this.info = info;
             this.label = label;
             this.valueType = valueType;
+            unsupported = null;
             isStatic = info is FieldInfo field ? field.IsStatic
                 : info is MethodInfo method ? method.IsStatic
                 : ((PropertyInfo)info).GetMethod.IsStatic;
+        }
+
+        public Member(string label, string unsupported)
+        {
+            info = null;
+            isStatic = false;
+            valueType = null;
+            this.label = label;
+            this.unsupported = unsupported;
         }
 
         /// <summary>Read the current value; a throwing member reports <paramref name="error"/> instead.</summary>
@@ -267,13 +277,15 @@ public static partial class ShowInSpectorGUI
 
             try
             {
-                switch (info)
+                if (info is FieldInfo field) value = field.GetValue(instance);
+                else if (info is PropertyInfo property) value = property.GetValue(instance);
+                else if (info is MethodInfo method) value = method.Invoke(instance, null);
+                else
                 {
-                    case FieldInfo field: value = field.GetValue(instance); return true;
-                    case PropertyInfo property: value = property.GetValue(instance); return true;
-                    case MethodInfo method: value = method.Invoke(instance, null); return true;
-                    default: error = "unsupported member"; return false;
+                    error = "unsupported member";
+                    return false;
                 }
+                return true;
             }
             catch (Exception exception)
             {
