@@ -6,17 +6,30 @@ using UnityEngine;
 
 /// <summary>
 /// Shared drawing for the generic inspectors: renders a read-only "Show In Spector" section with the
-/// LIVE value of every member marked with <see cref="ShowInSpectorAttribute"/> — or, for fields, with
-/// <see cref="TooltipAttribute"/> whose text is <c>"ShowInSpector"</c>. Three member kinds are picked up:
+/// LIVE value of every member tagged <c>[Tooltip("ShowInSpector")]</c>. Three member kinds are picked up:
 /// <list type="bullet">
 /// <item>non-serialized fields (private/internal without <c>[SerializeField]</c>, <c>[NonSerialized]</c>,
-/// static, or of a type Unity cannot serialize) — serialized ones already show in the default inspector;</item>
+/// static, readonly, or of a type Unity cannot serialize) — serialized ones already show in the
+/// default inspector;</item>
 /// <item>readable properties without index parameters;</item>
 /// <item>zero-parameter, non-generic methods that return a value.</item>
 /// </list>
+/// <example>
+/// <code>
+/// [Tooltip("ShowInSpector")] private int hitCount;                  // non-serialized field
+/// [Tooltip("ShowInSpector")] public bool IsGrounded => grounded;    // property
+/// [Tooltip("ShowInSpector: Distance")] float ToPlayer() => ...      // method + custom label
+/// </code>
+/// </example>
 /// Values are read every repaint (see <see cref="RequiresConstantRepaint"/>), so getters and methods used
 /// here should stay cheap and side-effect free. Reads are guarded: a throwing member shows its exception
 /// instead of breaking the inspector. Multi-object selections show <c>—</c> where targets disagree.
+/// <para>
+/// <see cref="TooltipAttribute"/> is declared <see cref="AttributeTargets.All"/> as of Unity 2021.3
+/// (it was field-only up to 2021.1), which is what lets one attribute mark all three member kinds.
+/// On a member the inspector never draws, the tooltip text has no other effect — so it is free to
+/// carry the marker.
+/// </para>
 /// <para>
 /// Unity allows a single custom editor per type, so this does not declare its own
 /// <c>[CustomEditor]</c> — it is called from <see cref="ContextMenuButtonEditor"/> and
@@ -110,6 +123,12 @@ public static partial class ShowInSpectorGUI
         var properties = new List<Member>();
         var methods = new List<Member>();
 
+        // TooltipAttribute is Inherited, so an override of a marked virtual member reports the marker
+        // too — without this the derived and base declarations would both be listed. Fields can't be
+        // overridden, so a shadowed same-name field stays a genuinely separate entry.
+        var seenProperties = new HashSet<string>();
+        var seenMethods = new HashSet<string>();
+
         // DeclaredOnly + manual walk: private members of base classes are invisible to a plain GetFields.
         for (Type current = type; current != null && current != typeof(object); current = current.BaseType)
         {
@@ -120,8 +139,8 @@ public static partial class ShowInSpectorGUI
             }
 
             CollectFields(current, fields);
-            CollectProperties(current, properties);
-            CollectMethods(current, methods);
+            CollectProperties(current, properties, seenProperties);
+            CollectMethods(current, methods, seenMethods);
         }
 
         // Declared members first, base classes after — the walk above visits the hierarchy top-down already.
@@ -145,19 +164,21 @@ public static partial class ShowInSpectorGUI
         }
     }
 
-    private static void CollectProperties(Type type, List<Member> into)
+    private static void CollectProperties(Type type, List<Member> into, HashSet<string> seen)
     {
         foreach (PropertyInfo property in type.GetProperties(MemberFlags))
         {
             if (!TryGetMarker(property, out string label)) continue;
             // Write-only properties have nothing to show, and indexers need arguments we don't have.
             if (!property.CanRead || property.GetIndexParameters().Length > 0) continue;
+            // The walk runs derived-first, so the most-derived override is the one that sticks.
+            if (!seen.Add(property.Name)) continue;
             into.Add(new Member(property, label ?? ObjectNames.NicifyVariableName(property.Name),
                 property.PropertyType));
         }
     }
 
-    private static void CollectMethods(Type type, List<Member> into)
+    private static void CollectMethods(Type type, List<Member> into, HashSet<string> seen)
     {
         foreach (MethodInfo method in type.GetMethods(MemberFlags))
         {
@@ -165,26 +186,21 @@ public static partial class ShowInSpectorGUI
             // Only a plain value-returning getter can be invoked blindly on every repaint.
             if (method.ReturnType == typeof(void) || method.IsGenericMethodDefinition) continue;
             if (method.GetParameters().Length > 0) continue;
+            // Zero-arg means one method per name, so a repeat here is an override of a marked base method.
+            if (!seen.Add(method.Name)) continue;
             string name = label ?? $"{ObjectNames.NicifyVariableName(method.Name)} ()";
             into.Add(new Member(method, name, method.ReturnType));
         }
     }
 
     /// <summary>
-    /// True when the marker is present, either as <see cref="ShowInSpectorAttribute"/> or as a
-    /// <see cref="TooltipAttribute"/> reading <c>"ShowInSpector"</c>. An optional custom label may follow
-    /// the marker after <c>:</c>, <c>|</c> or <c>-</c> (e.g. <c>[Tooltip("ShowInSpector: Live Speed")]</c>).
+    /// True when the member carries a <see cref="TooltipAttribute"/> whose text is the marker. An optional
+    /// custom label may follow it after <c>:</c>, <c>|</c> or <c>-</c> — <c>[Tooltip("ShowInSpector: Live
+    /// Speed")]</c> shows up as "Live Speed"; a bare marker falls back to the nicified member name.
     /// </summary>
     private static bool TryGetMarker(MemberInfo member, out string label)
     {
         label = null;
-
-        var explicitMarker = member.GetCustomAttribute<ShowInSpectorAttribute>();
-        if (explicitMarker != null)
-        {
-            label = string.IsNullOrWhiteSpace(explicitMarker.label) ? null : explicitMarker.label.Trim();
-            return true;
-        }
 
         string tooltip = member.GetCustomAttribute<TooltipAttribute>()?.tooltip?.Trim();
         if (string.IsNullOrEmpty(tooltip)) return false;
