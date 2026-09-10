@@ -42,6 +42,9 @@ public readonly struct MemberValueEntry
     /// <summary>Parameters to fill before a method can run; empty for fields, properties and getters.</summary>
     public readonly ParameterInfo[] parameters;
 
+    /// <summary>True when the member can be assigned to: a non-readonly field, or a property with a setter.</summary>
+    public readonly bool canWrite;
+
     public string name => info.Name;
 
     public string declaringType => info.DeclaringType != null ? info.DeclaringType.Name : string.Empty;
@@ -65,6 +68,10 @@ public readonly struct MemberValueEntry
         this.isExternal = isExternal;
         this.parameters = parameters ?? MemberValueScan.NoParameters;
         label = ObjectNames.NicifyVariableName(info.Name);
+
+        if (info is FieldInfo field) canWrite = !field.IsInitOnly && !field.IsLiteral;
+        else if (info is PropertyInfo property) canWrite = property.CanWrite && property.SetMethod != null;
+        else canWrite = false;
     }
 
     /// <summary>
@@ -110,13 +117,43 @@ public readonly struct MemberValueEntry
             return false;
         }
     }
+
+    /// <summary>
+    /// Assign to the field or property. Guarded like <see cref="TryInvoke"/>: a setter that throws, or a
+    /// value the member refuses, reports <paramref name="error"/> rather than propagating.
+    /// </summary>
+    public bool TryWrite(object owner, object value, out string error)
+    {
+        error = null;
+        object instance = isStatic ? null : owner;
+
+        try
+        {
+            if (info is FieldInfo field) field.SetValue(instance, value);
+            else if (info is PropertyInfo property) property.SetValue(instance, value);
+            else
+            {
+                error = "not writable";
+                return false;
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Exception cause = exception is TargetInvocationException invocation && invocation.InnerException != null
+                ? invocation.InnerException
+                : exception;
+            error = $"{cause.GetType().Name}: {cause.Message}";
+            return false;
+        }
+    }
 }
 
 /// <summary>
 /// Enumerates every member of a type worth showing — fields (serialized or not), readable properties, and
 /// methods, including the void and parameterised ones that can only be run from a button — without needing
-/// any attribute on them. Results are cached
-/// per type, since the viewer repaints far too often to redo reflection each frame.
+/// any attribute on them. Results are cached per type, since the viewer repaints far too often to redo
+/// reflection each frame.
 /// <para>
 /// The scan is deliberately a superset: static and Unity-declared members are included and tagged, and the
 /// window filters them out by default. That way toggling a filter never re-runs reflection.

@@ -18,6 +18,12 @@ using UnityEngine;
 /// <c>Renderer.material</c> instantiates a material.
 /// </para>
 /// <para>
+/// With "Edit" on, writable fields and properties become editable fields instead of read-only ones,
+/// reusing the same widgets as the ContextMenu buttons. Methods are never affected by it, and neither are
+/// collections, nested objects, or members reached by drilling into a struct — writing there would land on
+/// a boxed copy and silently do nothing.
+/// </para>
+/// <para>
 /// Methods that return nothing or take arguments cannot be browsed at all, only run, so they sit behind a
 /// call button — with a field per parameter, reusing <see cref="ContextMenuButtonGUI.DrawField"/> so the
 /// argument fields match the ContextMenu buttons. A call on a Unity object is wrapped in
@@ -43,6 +49,7 @@ public partial class MemberValueViewerWindow : EditorWindow
     [SerializeField] private bool autoReadProperties = true;
     [SerializeField] private bool autoInvokeMethods;
     [SerializeField] private bool live = true;
+    [SerializeField] private bool editMode;
     [SerializeField] private int maxDepth = 3;
     [SerializeField] private Vector2 scroll;
 
@@ -165,8 +172,14 @@ public partial class MemberValueViewerWindow : EditorWindow
         if (auto)
         {
             path.Clear();
-            if (member.TryRead(owner, out object value, out string error)) DrawValue(label, member.valueType, value, key, depth);
-            else MemberValueGUI.DrawNote(label, $"⚠ {error}");
+            if (!member.TryRead(owner, out object value, out string error))
+            {
+                MemberValueGUI.DrawNote(label, $"⚠ {error}");
+                return;
+            }
+
+            if (IsEditable(owner, member)) DrawEditableRow(owner, member, label, value, key);
+            else DrawValue(label, member.valueType, value, key, depth);
             return;
         }
 
@@ -182,6 +195,45 @@ public partial class MemberValueViewerWindow : EditorWindow
 
         // A structured result cannot share the button's row — a foldout needs its own vertical space.
         if (!inline) DrawStructuredResult(member, result, key, depth);
+    }
+
+    /// <summary>
+    /// Whether this row should be an editable field rather than a read-only one.
+    /// <para>
+    /// A boxed struct owner is refused on purpose: drilling into a struct field hands us a copy, so writing
+    /// to it would change the copy and silently do nothing to the object on screen. Only leaf types are
+    /// offered, because those are what <see cref="ContextMenuButtonGUI.DrawField"/> can edit in one line —
+    /// collections and nested objects stay read-only.
+    /// </para>
+    /// </summary>
+    private bool IsEditable(object owner, MemberValueEntry member)
+    {
+        if (!editMode || !member.canWrite) return false;
+        if (owner != null && owner.GetType().IsValueType) return false;
+        return MemberValueGUI.IsLeaf(member.valueType);
+    }
+
+    /// <summary>
+    /// An editable field, reusing the same parameter fields as the ContextMenu buttons. Undo is recorded
+    /// for Unity objects, but note it only restores serialized state — most of what this window shows is
+    /// deliberately non-serialized, and an undo will not bring those values back.
+    /// </summary>
+    private void DrawEditableRow(object owner, MemberValueEntry member, string label, object value, string key)
+    {
+        EditorGUI.BeginChangeCheck();
+        object edited = ContextMenuButtonGUI.DrawField(label, member.valueType, value, key);
+        if (!EditorGUI.EndChangeCheck()) return;
+
+        var unityOwner = owner as UnityEngine.Object;
+        if (unityOwner != null) Undo.RecordObject(unityOwner, $"Edit {member.name}");
+
+        if (!member.TryWrite(owner, edited, out string error))
+        {
+            Debug.LogError($"Member Value Viewer: could not set '{member.name}' — {error}");
+            return;
+        }
+
+        if (unityOwner != null && !Application.isPlaying) EditorUtility.SetDirty(unityOwner);
     }
 
     /// <summary>A method that has to be called: parameter fields behind a foldout, then the button.</summary>
@@ -332,6 +384,7 @@ public partial class MemberValueViewerWindow : EditorWindow
             GUILayout.Label(target != null ? target.name : "nothing selected", EditorStyles.miniLabel);
 
             GUILayout.FlexibleSpace();
+            editMode = GUILayout.Toggle(editMode, "Edit", EditorStyles.toolbarButton, GUILayout.Width(42f));
             live = GUILayout.Toggle(live, "Live", EditorStyles.toolbarButton, GUILayout.Width(42f));
             if (GUILayout.Button("Refresh", EditorStyles.toolbarButton, GUILayout.Width(58f))) ClearEvaluated();
         }
