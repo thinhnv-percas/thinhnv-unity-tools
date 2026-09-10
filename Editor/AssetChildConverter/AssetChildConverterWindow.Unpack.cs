@@ -64,10 +64,11 @@ namespace Thinhnv.UnityTools.AssetChildConverter
 
             unpackFolder = string.IsNullOrEmpty(unpackFolder) ? Path.GetDirectoryName(path) : unpackFolder;
 
+            Object main = AssetDatabase.LoadMainAssetAtPath(path);
             var selected = new HashSet<Object>(Selection.objects);
             foreach (Object obj in AssetDatabase.LoadAllAssetsAtPath(path))
             {
-                if (obj == null || AssetDatabase.IsMainAsset(obj)) continue;
+                if (!IsListableSubAsset(obj, main)) continue;
 
                 scannedChildren.Add(new SubAssetRow
                 {
@@ -77,6 +78,30 @@ namespace Thinhnv.UnityTools.AssetChildConverter
                     Hidden = (obj.hideFlags & HideFlags.HideInHierarchy) != 0,
                 });
             }
+        }
+
+        /// <summary>
+        /// A file's detachable sub-assets. <see cref="AssetDatabase.LoadAllAssetsAtPath"/> hands back
+        /// everything stored in the file, which for a Prefab or an FBX means every GameObject and
+        /// Component in the hierarchy — those are the file's contents, not sub-assets you can lift out, so
+        /// listing them showed a prefab's whole component tree as if it were unpackable.
+        /// </summary>
+        private static bool IsListableSubAsset(Object obj, Object main)
+        {
+            return obj != null && obj != main && !(obj is GameObject) && !(obj is Component);
+        }
+
+        /// <summary>How many detachable sub-assets the file holds right now — used to prove a removal stuck.</summary>
+        private static int CountSubAssets(string assetPath)
+        {
+            Object main = AssetDatabase.LoadMainAssetAtPath(assetPath);
+            int count = 0;
+            foreach (Object obj in AssetDatabase.LoadAllAssetsAtPath(assetPath))
+            {
+                if (IsListableSubAsset(obj, main)) count++;
+            }
+
+            return count;
         }
 
         /// <summary>Forces the next <see cref="SyncScan"/> to re-read the file.</summary>
@@ -259,6 +284,7 @@ namespace Thinhnv.UnityTools.AssetChildConverter
         private void Unpack(List<Object> children, Object parent, bool repointReferences, string folder, bool remove)
         {
             string parentPath = AssetDatabase.GetAssetPath(parent);
+            int before = CountSubAssets(parentPath);
             var pending = new List<PendingExtract>();
 
             // Phase A: write each sub-asset out as its own file. The originals stay put so references still resolve.
@@ -299,16 +325,26 @@ namespace Thinhnv.UnityTools.AssetChildConverter
                 lastLog.Add($"Repointed {total} reference(s) across {hits.Count} asset(s).");
             }
 
-            // Phase C: drop the originals out of the parent file.
+            // Phase C: delete the originals out of the parent file.
+            //
+            // DestroyImmediate(obj, true) rather than AssetDatabase.RemoveObjectFromAsset: the latter only
+            // detaches the object and leaves it alive, so it can be written straight back on the next save
+            // and the sub-asset appears not to have gone anywhere. Destroying it is what the SubAssetEditor
+            // in this package does, and it is what actually sticks.
             if (remove)
             {
+                int destroyed = 0;
                 foreach (PendingExtract p in pending)
                 {
-                    AssetDatabase.RemoveObjectFromAsset(p.Original);
+                    if (p.Original == null) continue;
+                    Object.DestroyImmediate(p.Original, true);
+                    destroyed++;
                 }
 
+                EditorUtility.SetDirty(parent);
+                AssetDatabase.SaveAssets();
                 AssetDatabase.ImportAsset(parentPath);
-                lastLog.Add($"Removed {pending.Count} sub-asset(s) from '{parentPath}'.");
+                lastLog.Add($"Deleted {destroyed} sub-asset(s) from '{parentPath}'.");
             }
             else
             {
@@ -317,6 +353,12 @@ namespace Thinhnv.UnityTools.AssetChildConverter
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+
+            // Read the file back rather than assuming: a removal that silently failed is the whole reason
+            // this reports numbers instead of just saying "done".
+            int after = CountSubAssets(parentPath);
+            lastLog.Add($"'{parentPath}' now holds {after} sub-asset(s) (was {before}).");
+            bool removalStuck = !remove || after == before - pending.Count;
 
             if (pending.Count > 0)
             {
@@ -328,9 +370,16 @@ namespace Thinhnv.UnityTools.AssetChildConverter
                 }
             }
 
+            string outcome = remove
+                ? (removalStuck
+                    ? $"and deleted them from '{parent.name}'."
+                    : $"but '{parent.name}' still holds {after} sub-asset(s) — expected {before - pending.Count}. " +
+                      "Check the Result log; the copies were still written.")
+                : $"leaving the originals inside '{parent.name}'.";
+
             EditorUtility.DisplayDialog(
                 "Asset Child Converter",
-                $"Unpacked {pending.Count} sub-asset(s) into '{folder}'.",
+                $"Unpacked {pending.Count} sub-asset(s) into '{folder}' {outcome}",
                 "OK");
         }
 
@@ -409,6 +458,12 @@ namespace Thinhnv.UnityTools.AssetChildConverter
             {
                 reason = $"'{child.name}' is a Sprite. Sprites belong to their source texture's importer — " +
                          "extract them with the Sprite Editor instead.";
+                return false;
+            }
+
+            if (child is GameObject || child is Component)
+            {
+                reason = $"'{child.name}' is part of a prefab's hierarchy, not a detachable sub-asset.";
                 return false;
             }
 
