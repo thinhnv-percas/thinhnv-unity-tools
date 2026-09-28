@@ -3,9 +3,6 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityEngine.Rendering.Universal; // Project already depends on URP (confirmed via PackageCache).
-                                        // Remove this + the URP check below if this file needs to run
-                                        // in a non-URP project too.
 
 /// <summary>
 /// Exposes Sorting Layer and Order in Layer on MeshRenderer in the Inspector,
@@ -41,8 +38,8 @@ using UnityEngine.Rendering.Universal; // Project already depends on URP (confir
 /// Unity 6's UIToolkit inspector automatically wraps OnInspectorGUI() (IMGUI)
 /// in an IMGUIContainer for you, so one code path covers 2019.4 LTS → 6.x.
 ///
-/// Compatible: Unity 2019.4 LTS → Unity 6.x (requires URP for the 2D section;
-/// see the "URP dependency" note above if this needs to run without URP).
+/// Compatible: Unity 2019.4 LTS → Unity 6.x. URP is detected by type name, so
+/// the file compiles without the URP package (the 2D section is just hidden).
 /// </summary>
 [CustomEditor(typeof(MeshRenderer))]
 [CanEditMultipleObjects]
@@ -121,8 +118,7 @@ public class MeshRendererSortingURPEditor : Editor
     // that field's C# accessibility, so this doesn't hit the internal-access wall.
     private void DrawMaskInteractionSection()
     {
-        var rpAsset = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
-        if (rpAsset == null) return; // Not on URP: core MeshRendererEditor already covers everything.
+        if (!IsUrpActive()) return; // Not on URP: core MeshRendererEditor already covers everything.
 
         var maskInteractionProp = serializedObject.FindProperty("m_MaskInteraction");
         if (maskInteractionProp == null) return; // Field renamed/removed in this Unity version.
@@ -141,6 +137,19 @@ public class MeshRendererSortingURPEditor : Editor
         EditorGUILayout.PropertyField(maskInteractionProp, Styles.maskInteractionLabel);
         serializedObject.ApplyModifiedProperties();
         EditorGUI.indentLevel--;
+    }
+
+    // Compared by name instead of `is UniversalRenderPipelineAsset` so this file
+    // has no compile-time dependency on the URP package.
+    private const string UrpAssetTypeName = "UnityEngine.Rendering.Universal.UniversalRenderPipelineAsset";
+
+    private static bool IsUrpActive()
+    {
+        for (Type t = GraphicsSettings.currentRenderPipeline?.GetType(); t != null; t = t.BaseType)
+        {
+            if (t.FullName == UrpAssetTypeName) return true;
+        }
+        return false;
     }
 
     // ─── Sorting Layer / Order in Layer ────────────────────────────────────────

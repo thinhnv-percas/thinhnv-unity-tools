@@ -1,5 +1,10 @@
 using UnityEditor;
 using UnityEngine;
+#if UNITY_6000_0_OR_NEWER
+using PhysicsMaterial = UnityEngine.PhysicsMaterial;
+#else
+using PhysicsMaterial = UnityEngine.PhysicMaterial; // Renamed to PhysicsMaterial in Unity 6.
+#endif
 
 namespace Thinhnv.UnityTools.ObjectDefBuilder
 {

@@ -1,4 +1,6 @@
-#if UNITY_EDITOR
+// MainToolbar / MainToolbarElement API only exists in Unity 6.3+. The asmdef in this folder
+// also skips compiling this file unless MCP for Unity (com.coplaydev.unity-mcp) is installed.
+#if UNITY_EDITOR && UNITY_6000_3_OR_NEWER
 
 using System;
 using System.Collections.Generic;

@@ -1,4 +1,5 @@
-#if UNITY_EDITOR
+// MainToolbar / MainToolbarElement API only exists in Unity 6.3+.
+#if UNITY_EDITOR && UNITY_6000_3_OR_NEWER
 
 using System;
 using System.Reflection;
