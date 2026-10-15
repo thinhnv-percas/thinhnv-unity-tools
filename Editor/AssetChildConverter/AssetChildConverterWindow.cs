@@ -22,6 +22,9 @@ namespace Thinhnv.UnityTools.AssetChildConverter
     /// don't apply here — their content is regenerated from the source file by their importer, not by
     /// this tool. Use the Texture's Sprite Editor / Sprite Mode to manage Sprite sub-assets instead.
     ///
+    /// The reverse direction lives in the Unpack partial: the sub-assets already inside the parent are
+    /// listed automatically and the ticked ones can be lifted back out into standalone asset files.
+    ///
     /// Open via: Tools &gt; Thinhnv &gt; Asset Child Converter.
     /// </summary>
     public partial class AssetChildConverterWindow : EditorWindow
@@ -44,6 +47,7 @@ namespace Thinhnv.UnityTools.AssetChildConverter
 
         private readonly List<string> lastLog = new();
         private Vector2 logScroll;
+        private Vector2 mainScroll;
 
         [MenuItem("Tools/Thinhnv/Asset Child Converter")]
         public static void Open()
@@ -84,6 +88,8 @@ namespace Thinhnv.UnityTools.AssetChildConverter
 
         private void OnGUI()
         {
+            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
+
             EditorGUILayout.HelpBox(
                 "Makes one or more assets a sub-asset (child) of another asset's file — e.g. a " +
                 "ScriptableObject embedded inside another ScriptableObject. Existing references are " +
@@ -93,6 +99,8 @@ namespace Thinhnv.UnityTools.AssetChildConverter
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Parent Asset (container)", EditorStyles.boldLabel);
             parentAsset = EditorGUILayout.ObjectField(parentAsset, typeof(Object), false);
+
+            DrawChildrenSection();
 
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Child Assets (will become sub-assets of Parent)", EditorStyles.boldLabel);
@@ -108,13 +116,17 @@ namespace Thinhnv.UnityTools.AssetChildConverter
                 EditorGUI.indentLevel++;
                 scanScenes = EditorGUILayout.ToggleLeft("Scenes (Assets/**/*.unity)", scanScenes);
                 scanPrefabs = EditorGUILayout.ToggleLeft("Prefabs (Assets/**/*.prefab)", scanPrefabs);
-                scanScriptableObjects = EditorGUILayout.ToggleLeft("ScriptableObject / native asset files", scanScriptableObjects);
+                scanScriptableObjects = EditorGUILayout.ToggleLeft(
+                    "All other native asset files (ScriptableObject, Material, AnimatorController, Preset, …)",
+                    scanScriptableObjects);
                 EditorGUI.indentLevel--;
             }
 
             EditorGUILayout.Space();
             DrawConvertButton();
             DrawLog();
+
+            EditorGUILayout.EndScrollView();
         }
 
         private void DrawChildList()
@@ -221,6 +233,8 @@ namespace Thinhnv.UnityTools.AssetChildConverter
                 {
                     lastLog.Clear();
                     Convert(validChildren, parentAsset, fixReferences);
+                    // The parent just gained sub-assets; the list above has to be re-read.
+                    InvalidateScan();
                 }
             }
         }

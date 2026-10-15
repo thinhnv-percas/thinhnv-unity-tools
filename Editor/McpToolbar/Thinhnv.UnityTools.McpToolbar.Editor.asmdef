@@ -1,0 +1,27 @@
+{
+    "name": "Thinhnv.UnityTools.McpToolbar.Editor",
+    "rootNamespace": "",
+    "references": [
+        "MCPForUnity.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_6000_3_OR_NEWER",
+        "THINHNV_MCP_FOR_UNITY"
+    ],
+    "versionDefines": [
+        {
+            "name": "com.coplaydev.unity-mcp",
+            "expression": "0.0.0",
+            "define": "THINHNV_MCP_FOR_UNITY"
+        }
+    ],
+    "noEngineReferences": false
+}

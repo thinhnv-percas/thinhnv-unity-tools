@@ -96,27 +96,68 @@ namespace Thinhnv.UnityTools.AssetChildConverter
             return hits;
         }
 
+        /// <summary>
+        /// Every file a reference could be hiding in. "Other" used to mean ScriptableObject, Material and
+        /// AnimationClip only, which silently missed every other native type — an AnimatorController, a
+        /// Preset, a Timeline or an AudioMixer pointing at the asset would be left dangling while the tool
+        /// still reported success. It now takes all assets and subtracts the imported source files instead,
+        /// which is complete by construction: anything Unity did not import from a foreign file holds its
+        /// references in a serialized file we can rewrite.
+        /// </summary>
         private static List<string> CollectCandidatePaths(bool includeScenes, bool includePrefabs, bool includeOther)
         {
             var list = new List<string>();
+            var seen = new HashSet<string>();
+
             if (includeScenes)
             {
-                list.AddRange(FindAssetPaths("t:Scene"));
+                AddRange(list, seen, FindAssetPaths("t:Scene"));
             }
 
             if (includePrefabs)
             {
-                list.AddRange(FindAssetPaths("t:Prefab"));
+                AddRange(list, seen, FindAssetPaths("t:Prefab"));
             }
 
             if (includeOther)
             {
-                list.AddRange(FindAssetPaths("t:ScriptableObject"));
-                list.AddRange(FindAssetPaths("t:Material"));
-                list.AddRange(FindAssetPaths("t:AnimationClip"));
+                AddRange(list, seen, FindNativeAssetPaths());
             }
 
             return list;
+        }
+
+        private static void AddRange(List<string> list, HashSet<string> seen, IEnumerable<string> paths)
+        {
+            foreach (string path in paths)
+            {
+                // Filters overlap — a prefab is also matched by the sweep below — and scanning a file twice
+                // just costs time.
+                if (seen.Add(path))
+                {
+                    list.Add(path);
+                }
+            }
+        }
+
+        /// <summary>Every asset except folders and imported source files (textures, models, audio, scripts).</summary>
+        private static IEnumerable<string> FindNativeAssetPaths()
+        {
+            foreach (string path in FindAssetPaths("t:Object"))
+            {
+                if (AssetDatabase.IsValidFolder(path))
+                {
+                    continue;
+                }
+
+                // An imported source file has no serialized object references of its own to rewrite.
+                if (ImportedSourceExtensions.Contains(Path.GetExtension(path)))
+                {
+                    continue;
+                }
+
+                yield return path;
+            }
         }
 
         private static IEnumerable<string> FindAssetPaths(string filter)

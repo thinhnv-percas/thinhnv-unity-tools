@@ -84,6 +84,12 @@ public sealed class ScreenshotUtility : EditorWindow
         set { EditorPrefs.SetBool(PlayerSettings.productName + "_SRCSHOT_CMPRS", value); }
     }
 
+    private static bool Transparency
+    {
+        get { return EditorPrefs.GetBool(PlayerSettings.productName + "_SRCSHOT_TRANSPARENCY", false); }
+        set { EditorPrefs.SetBool(PlayerSettings.productName + "_SRCSHOT_TRANSPARENCY", value); }
+    }
+
     private static bool ListenToPrintButton
     {
         get { return EditorPrefs.GetBool(PlayerSettings.productName + "_SRCSHOT_PRINT_BTN", false); }
@@ -142,7 +148,7 @@ public sealed class ScreenshotUtility : EditorWindow
 
         //Options
         ssWindow.autoRepaintOnSceneChange = true;
-        ssWindow.maxSize = new Vector2(250f, 260f);
+        ssWindow.maxSize = new Vector2(250f, 300f);
         ssWindow.minSize = ssWindow.maxSize;
         ssWindow.titleContent.image = EditorGUIUtility.IconContent("Camera Gizmo").image;
         ssWindow.titleContent.text = "Screenshot";
@@ -323,7 +329,7 @@ public sealed class ScreenshotUtility : EditorWindow
    
         EditorGUILayout.BeginVertical(EditorStyles.helpBox);
         {
-            if (!UseNativeCapture || captureScene)
+            if (!UseNativeCapture || captureScene || Transparency)
             {
                 EditorGUILayout.LabelField("Resolution (" + ssWidth + " x " + ssHeight + ")", EditorStyles.boldLabel);
 
@@ -391,13 +397,18 @@ public sealed class ScreenshotUtility : EditorWindow
                 }
             }
             
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                Transparency = EditorGUILayout.ToggleLeft(new GUIContent(" Transparent background (alpha PNG)", "Clears the chosen camera to a transparent background and saves a PNG with an alpha channel.\n\nForces render-texture capture and temporarily turns off post-processing (URP writes an opaque alpha otherwise)."), Transparency);
+            }
+
             using (new EditorGUILayout.HorizontalScope(EditorStyles.textArea))
             {
                 OutputPNG = GUILayout.Toggle(OutputPNG, "PNG", EditorStyles.miniButtonLeft, GUILayout.Width(50f), GUILayout.ExpandWidth(false));
                 OutputPNG = !GUILayout.Toggle(!OutputPNG, "JPG", EditorStyles.miniButtonRight, GUILayout.Width(50f), GUILayout.ExpandWidth(false));
-                if(!UseNativeCapture || captureScene) OpenAfterCapture = EditorGUILayout.ToggleLeft("Auto open", OpenAfterCapture, GUILayout.MaxWidth(80f));
+                if(!UseNativeCapture || captureScene || Transparency) OpenAfterCapture = EditorGUILayout.ToggleLeft("Auto open", OpenAfterCapture, GUILayout.MaxWidth(80f));
             }
-            
+
             EditorGUI.EndDisabledGroup();
         }
         EditorGUILayout.EndVertical();
@@ -451,9 +462,9 @@ public sealed class ScreenshotUtility : EditorWindow
     {
         if (!sourceCamera) return;
 
-        transparency = sourceCamera.clearFlags == CameraClearFlags.Depth;
+        transparency = Transparency || sourceCamera.clearFlags == CameraClearFlags.Depth;
 
-        var useRenderTexture = !UseNativeCapture || captureScene;
+        var useRenderTexture = !UseNativeCapture || captureScene || transparency;
         
         string filename = FormatFileName(Resolution, DateFormats[DateFormat]) + (OutputPNG || transparency == true ? ".png" : ".jpg");
         
@@ -542,8 +553,36 @@ public sealed class ScreenshotUtility : EditorWindow
     private void CaptureFromTargetTexture(string path)
     {
         var hdr = sourceCamera.allowHDR && PlayerSettings.colorSpace == ColorSpace.Linear;
+        //Transparency needs a straight LDR ARGB32 buffer; skip the HDR->sRGB conversion path
+        if (transparency) hdr = false;
 
-        rt = new RenderTexture(ssWidth, ssHeight, 16, hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default, RenderTextureReadWrite.sRGB);
+        //Temporarily override the camera so its background clears to transparent black
+        CameraClearFlags originalClearFlags = sourceCamera.clearFlags;
+        Color originalBackground = sourceCamera.backgroundColor;
+        //URP camera data is toggled via reflection so this assembly needs no hard reference to the URP package
+        Component urpData = null;
+        System.Reflection.PropertyInfo postFXProp = null;
+        bool originalPostFX = false;
+
+        if (transparency)
+        {
+            sourceCamera.clearFlags = CameraClearFlags.SolidColor;
+            sourceCamera.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+            //In URP the post-processing/final blit writes an opaque alpha, so turn it off for the capture
+            urpData = sourceCamera.GetComponent("UniversalAdditionalCameraData");
+            if (urpData != null)
+            {
+                postFXProp = urpData.GetType().GetProperty("renderPostProcessing");
+                if (postFXProp != null)
+                {
+                    originalPostFX = (bool)postFXProp.GetValue(urpData);
+                    postFXProp.SetValue(urpData, false);
+                }
+            }
+        }
+
+        rt = new RenderTexture(ssWidth, ssHeight, 16, transparency ? RenderTextureFormat.ARGB32 : (hdr ? RenderTextureFormat.DefaultHDR : RenderTextureFormat.Default), RenderTextureReadWrite.sRGB);
         screenShot = new Texture2D(ssWidth, ssHeight, transparency ? TextureFormat.ARGB32 : TextureFormat.RGB24, false, false);
 
         RenderTexture.active = rt;
@@ -569,6 +608,14 @@ public sealed class ScreenshotUtility : EditorWindow
         sourceCamera.targetTexture = null;
         RenderTexture.active = null;
         DestroyImmediate(rt);
+
+        //Restore the camera to its original state
+        if (transparency)
+        {
+            sourceCamera.clearFlags = originalClearFlags;
+            sourceCamera.backgroundColor = originalBackground;
+            if (postFXProp != null) postFXProp.SetValue(urpData, originalPostFX);
+        }
         
         EditorUtility.DisplayProgressBar("Screenshot", "Encoding " + 2 + "/" + 3, 2f / 3f);
         byte[] bytes = (OutputPNG || transparency) ? screenShot.EncodeToPNG() : screenShot.EncodeToJPG();

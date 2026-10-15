@@ -18,13 +18,22 @@ Is Sleeping         : {rb.IsSleeping()}
 Is Kinematic        : {rb.isKinematic}
 Use Gravity         : {rb.useGravity}
 Detect Collisions   : {rb.detectCollisions}
-Linear Velocity     : {rb.linearVelocity}
+Linear Velocity     : {GetLinearVelocity(rb)}
 Angular Velocity    : {rb.angularVelocity}
 Mass                : {rb.mass}
 Constraints         : {rb.constraints}
 Position            : {rb.position}
 ====================================",
         rb);
+    }
+
+    private static Vector3 GetLinearVelocity(Rigidbody rb)
+    {
+#if UNITY_6000_0_OR_NEWER
+        return rb.linearVelocity;
+#else
+        return rb.velocity;
+#endif
     }
 
     [MenuItem("CONTEXT/Rigidbody/Wake Up")]
