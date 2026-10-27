@@ -112,6 +112,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 string newName = EditorGUILayout.DelayedTextField("Name", name?.String ?? "");
                 if (EditorGUI.EndChangeCheck())
                 {
+                    RecordFields("Rename", null, change, "name");
                     change.Set("name", KiwiValue.FromString(newName));
                     MarkDirty();
                     OnStructureChanged();
@@ -128,8 +129,10 @@ namespace Thinhnv.UnityTools.FigEditor
                 float value = EditorGUILayout.Slider("Opacity", opacity?.AsFloat ?? 1f, 0f, 1f);
                 if (EditorGUI.EndChangeCheck())
                 {
+                    RecordFields("Opacity", "opacity:" + node.Id, change, "opacity");
                     change.Set("opacity", KiwiValue.FromFloat(value));
                     MarkDirty();
+                    InvalidateBoardNode(node.Id);
                 }
             }
 
@@ -140,10 +143,11 @@ namespace Thinhnv.UnityTools.FigEditor
                 Vector2 newSize = EditorGUILayout.Vector2Field("Size", new Vector2(size.Get("x")?.AsFloat ?? 0, size.Get("y")?.AsFloat ?? 0));
                 if (EditorGUI.EndChangeCheck())
                 {
+                    RecordFields("Resize", "size:" + node.Id, change, "size");
                     SetFloat(size, "x", Mathf.Max(0, newSize.x));
                     SetFloat(size, "y", Mathf.Max(0, newSize.y));
                     MarkDirty();
-                    previewDirty = true;
+                    InvalidateBoardNode(node.Id);
                 }
             }
 
@@ -154,10 +158,11 @@ namespace Thinhnv.UnityTools.FigEditor
                 Vector2 newPos = EditorGUILayout.Vector2Field("Position", new Vector2(transform.Get("m02")?.AsFloat ?? 0, transform.Get("m12")?.AsFloat ?? 0));
                 if (EditorGUI.EndChangeCheck())
                 {
+                    RecordFields("Move", "position:" + node.Id, change, "transform");
                     SetFloat(transform, "m02", newPos.x);
                     SetFloat(transform, "m12", newPos.y);
                     MarkDirty();
-                    previewDirty = true;
+                    InvalidateBoardNode(node.Id);
                 }
 
                 float m00 = transform.Get("m00")?.AsFloat ?? 1;
@@ -174,11 +179,21 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 EditorGUILayout.LabelField("Text");
                 EditorGUI.BeginChangeCheck();
+                GUI.SetNextControlName("FigTextArea");
                 string text = EditorGUILayout.TextArea(characters.String ?? "", GUILayout.MinHeight(48));
+                if (focusTextField && Event.current.type == EventType.Repaint)
+                {
+                    // Double-clicking text on the board lands here.
+                    focusTextField = false;
+                    EditorGUI.FocusTextInControl("FigTextArea");
+                }
+
                 if (EditorGUI.EndChangeCheck())
                 {
+                    RecordFields("Edit Text", "text:" + node.Id, change, "textData", "derivedTextData");
                     FigFile.SetText(node, text);
                     MarkDirty();
+                    InvalidateBoardNode(node.Id);
                 }
 
                 if (change.Get("derivedTextData") == null && hasUnsavedChanges)
@@ -187,8 +202,8 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            DrawPaintList(change, "fillPaints", "Fills");
-            DrawPaintList(change, "strokePaints", "Strokes");
+            DrawPaintList(node, "fillPaints", "Fills");
+            DrawPaintList(node, "strokePaints", "Strokes");
         }
 
         private void DrawOptionalBool(KiwiValue obj, string field, string label, bool fallback)
@@ -203,15 +218,17 @@ namespace Thinhnv.UnityTools.FigEditor
             bool value = EditorGUILayout.Toggle(label, v?.AsBool ?? fallback);
             if (EditorGUI.EndChangeCheck())
             {
+                RecordFields(label, null, obj, field);
                 obj.Set(field, KiwiValue.FromBool(value));
                 MarkDirty();
                 rowsDirty = true;
-                previewDirty = true;
+                InvalidateBoard();
             }
         }
 
-        private void DrawPaintList(KiwiValue change, string field, string label)
+        private void DrawPaintList(FigNode node, string field, string label)
         {
+            KiwiValue change = node.Change;
             List<KiwiValue> paints = change.Get(field)?.Items;
             if (paints == null || paints.Count == 0)
             {
@@ -224,7 +241,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 KiwiValue paint = paints[i];
                 string type = paint.Get("type")?.EnumName ?? "?";
                 EditorGUILayout.BeginHorizontal();
-                DrawOptionalBoolInline(paint, "visible", true);
+                DrawOptionalBoolInline(node, field, paint, "visible", true);
 
                 KiwiValue color = paint.Get("color");
                 if (type == "SOLID" && color != null)
@@ -236,6 +253,7 @@ namespace Thinhnv.UnityTools.FigEditor
                     Color picked = EditorGUILayout.ColorField(GUIContent.none, c, true, true, false);
                     if (EditorGUI.EndChangeCheck())
                     {
+                        RecordFields(label + " Colour", field + ":" + node.Id, change, field);
                         // The picker's alpha goes to the paint's opacity; the colour keeps its own alpha.
                         float a = color.Get("a")?.AsFloat ?? 1f;
                         SetFloat(color, "r", picked.r);
@@ -243,7 +261,7 @@ namespace Thinhnv.UnityTools.FigEditor
                         SetFloat(color, "b", picked.b);
                         paint.Set("opacity", KiwiValue.FromFloat(a > 0 ? Mathf.Clamp01(picked.a / a) : picked.a));
                         MarkDirty();
-                        previewDirty = true;
+                        InvalidateBoardNode(node.Id);
                     }
                 }
                 else
@@ -278,7 +296,8 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
-        private void DrawOptionalBoolInline(KiwiValue obj, string field, bool fallback)
+        /// <summary>A toggle for a field of a paint; undo snapshots the node's whole paint list.</summary>
+        private void DrawOptionalBoolInline(FigNode node, string listField, KiwiValue obj, string field, bool fallback)
         {
             if (obj.Def.FieldByName(field) == null)
             {
@@ -290,9 +309,10 @@ namespace Thinhnv.UnityTools.FigEditor
             bool value = EditorGUILayout.Toggle(v?.AsBool ?? fallback, GUILayout.Width(18));
             if (EditorGUI.EndChangeCheck())
             {
+                RecordFields("Toggle Paint", null, node.Change, listField);
                 obj.Set(field, KiwiValue.FromBool(value));
                 MarkDirty();
-                previewDirty = true;
+                InvalidateBoardNode(node.Id);
             }
         }
 
@@ -842,7 +862,8 @@ namespace Thinhnv.UnityTools.FigEditor
                 });
             }
 
-            previewDirty = true;
+            // Raw edits don't go through undo; they may touch geometry, so the layer re-reads fully.
+            InvalidateBoardNode(selectedId);
         }
 
         // ─── Layer operations ────────────────────────────────────────────────────
@@ -850,7 +871,22 @@ namespace Thinhnv.UnityTools.FigEditor
         private void MoveNode(FigNode node, int delta)
         {
             FigNode current = file.Find(node.Id);
-            if (current != null && file.MoveAmongSiblings(current, delta))
+            List<FigNode> siblings = current?.Parent?.Children ?? file.Roots;
+            int index = current != null ? siblings.IndexOf(current) : -1;
+            int other = index + delta;
+            if (index < 0 || other < 0 || other >= siblings.Count)
+            {
+                return;
+            }
+
+            if (BeginUndo(delta < 0 ? "Move Up" : "Move Down", null))
+            {
+                undo.Capture(current.Change, "parentIndex");
+                undo.Capture(siblings[other].Change, "parentIndex");
+                CommitUndo(delta < 0 ? "Move Up" : "Move Down");
+            }
+
+            if (file.MoveAmongSiblings(current, delta))
             {
                 MarkDirty();
                 OnStructureChanged();
@@ -871,6 +907,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
+            RecordStructure("Duplicate " + current.Label);
             FigNode copy = file.Duplicate(current);
             MarkDirty();
             OnStructureChanged();
@@ -894,25 +931,14 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
-            int count = 1;
-            var stack = new Stack<FigNode>(current.Children);
-            while (stack.Count > 0)
-            {
-                FigNode n = stack.Pop();
-                count++;
-                foreach (FigNode child in n.Children)
-                {
-                    stack.Push(child);
-                }
-            }
-
-            string message = $"Delete \"{current.Label}\"" + (count > 1 ? $" and its {count - 1} descendant layers?" : "?") +
-                             (current.Type == "SYMBOL" ? "\n\nThis is a component: its instances will lose their main component." : "");
-            if (!EditorUtility.DisplayDialog("Fig Editor", message, "Delete", "Cancel"))
+            // Undo brings it back, so only deleting a component (which orphans its instances) asks.
+            if (current.Type == "SYMBOL" &&
+                !EditorUtility.DisplayDialog("Fig Editor", $"Delete the component \"{current.Label}\"? Its instances will lose their main component.", "Delete", "Cancel"))
             {
                 return;
             }
 
+            RecordStructure("Delete " + current.Label);
             string parent = current.Parent.Id;
             file.Delete(current);
             MarkDirty();
