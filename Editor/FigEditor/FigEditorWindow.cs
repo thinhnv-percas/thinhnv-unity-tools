@@ -8,46 +8,59 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.FigEditor
 {
     /// <summary>
-    /// Open, inspect and edit Figma <c>.fig</c> files inside the Unity Editor: browse the layer
-    /// tree, edit any field of a layer (names, visibility, sizes, positions, text, colours, enums —
-    /// or any raw field the file's schema defines), edit pages on a Figma-like board, replace or export
-    /// images, edit <c>meta.json</c> and the thumbnail, then save back to <c>.fig</c>.
+    /// Open, view and edit Figma <c>.fig</c> files in the Unity Editor, laid out like figcraft /
+    /// Figma: an icon rail and the Layers / Assets / File panel on the left, the canvas in the
+    /// middle (rendered in the background, see <see cref="FigTileCache"/>), and the Design /
+    /// Prototype / Inspect panel on the right.
     ///
-    /// The file is decoded generically with the schema it carries (see <see cref="FigFile"/>), so
-    /// fields this tool has no UI for are still shown in the raw view and written back unchanged.
-    /// Format knowledge comes from figcraft (https://github.com/storytold/figcraft).
+    /// The file is decoded generically with the schema it carries (see <see cref="FigFile"/>);
+    /// instances are expanded from their main components (<see cref="FigScene"/>) and the page is
+    /// drawn by a software renderer (<see cref="FigRenderer"/>). Format knowledge comes from figcraft
+    /// (https://github.com/storytold/figcraft).
     ///
     /// Open via: Tools &gt; Thinhnv &gt; Fig Editor, or right-click a .fig asset &gt; Open in Fig Editor.
     /// </summary>
     public partial class FigEditorWindow : EditorWindow
     {
         private const string MenuPath = "Tools/Thinhnv/Fig Editor";
-        private const float ToolbarHeight = 21f;
-        private const float MinTreeWidth = 180f;
+        private const float RailWidth = 48f;
+        private const float HeaderHeight = 40f;
+        private const float MinSideWidth = 200f;
 
-        private static readonly string[] TabNames = { "Layer", "Board", "Images", "File" };
+        private enum Rail
+        {
+            Layers,
+            Assets,
+            File,
+        }
+
+        private enum RightTab
+        {
+            Design,
+            Prototype,
+            Inspect,
+        }
 
         [SerializeField] private string filePath;
         [SerializeField] private string selectedId;
-        [SerializeField] private int tab;
-        [SerializeField] private float treeWidth = 320f;
+        [SerializeField] private float leftWidth = 260f;
+        [SerializeField] private float rightWidth = 280f;
+        [SerializeField] private Rail rail = Rail.Layers;
+        [SerializeField] private RightTab rightTab = RightTab.Design;
         [SerializeField] private List<string> expandedIds = new();
+        [SerializeField] private List<string> recentFiles = new();
 
         private FigFile file;
         private string loadError;
         private bool backupMade;
-        private bool resizingTree;
-        private int imageCount = -1;
-
-        private GUIStyle richMiniLabel;
-        private GUIStyle wrapLabel;
+        private int resizing;
 
         private FigNode Selected => file?.Find(selectedId);
 
         [MenuItem(MenuPath)]
         public static void Open()
         {
-            GetWindow<FigEditorWindow>("Fig Editor").minSize = new Vector2(760, 420);
+            GetWindow<FigEditorWindow>("Fig Editor").minSize = new Vector2(900, 500);
         }
 
         [MenuItem("Assets/Open in Fig Editor", false, 40)]
@@ -60,7 +73,7 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             FigEditorWindow window = GetWindow<FigEditorWindow>("Fig Editor");
-            window.minSize = new Vector2(760, 420);
+            window.minSize = new Vector2(900, 500);
             window.OpenFile(Path.GetFullPath(path));
         }
 
@@ -81,7 +94,7 @@ namespace Thinhnv.UnityTools.FigEditor
             saveChangesMessage = "The .fig file open in Fig Editor has unsaved edits. Save them before closing?";
             expanded = new HashSet<string>(expandedIds);
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
-            EnableBoard();
+            EnableCanvas();
 
             // Unsaved edits don't survive a domain reload (the decoded tree isn't serializable), so
             // the file is simply read again from disk.
@@ -95,8 +108,9 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             expandedIds = new List<string>(expanded);
-            DisableBoard();
+            DisableCanvas();
             ClearTextureCache();
+            FigTheme.ReleaseIcons();
         }
 
         private void OnBeforeAssemblyReload()
@@ -175,12 +189,19 @@ namespace Thinhnv.UnityTools.FigEditor
                     selectedId = null;
                 }
 
-                OnStructureChanged();
                 ClearTextureCache();
-                ResetBoard();
+                ResetCanvas();
+                OnStructureChanged();
                 foreach (FigNode root in file.Roots)
                 {
                     expanded.Add(root.Id);
+                }
+
+                recentFiles.Remove(path);
+                recentFiles.Insert(0, path);
+                if (recentFiles.Count > 8)
+                {
+                    recentFiles.RemoveRange(8, recentFiles.Count - 8);
                 }
 
                 titleContent = new GUIContent("Fig Editor", "Fig Editor — " + Path.GetFileName(path));
@@ -278,132 +299,150 @@ namespace Thinhnv.UnityTools.FigEditor
             hasUnsavedChanges = true;
         }
 
-        /// <summary>Call after anything that changes the layer tree (ids, parents, positions, names).</summary>
+        /// <summary>Call after anything that changes the layer tree (ids, parents, positions, names, visibility).</summary>
         private void OnStructureChanged()
         {
             rowsDirty = true;
             imageUsers = null;
             InvalidateBoard();
-            imageCount = -1;
+        }
+
+        private void ShowFileMenu()
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Open…"), false, () => Defer(ShowOpenDialog));
+            foreach (string recent in recentFiles)
+            {
+                if (recent != filePath && File.Exists(recent))
+                {
+                    string path = recent;
+                    menu.AddItem(new GUIContent("Open Recent/" + Path.GetFileName(path).Replace("/", "∕")), false, () => Defer(() => OpenFile(path)));
+                }
+            }
+
+            menu.AddSeparator("");
+            if (file != null)
+            {
+                menu.AddItem(new GUIContent("Save"), false, () => Defer(() => SaveTo(filePath)));
+                menu.AddItem(new GUIContent("Save As…"), false, () => Defer(ShowSaveAsDialog));
+                menu.AddItem(new GUIContent("Reload"), false, () => Defer(() =>
+                {
+                    if (!hasUnsavedChanges || EditorUtility.DisplayDialog("Fig Editor", "Discard the unsaved edits and read the file again?", "Reload", "Cancel"))
+                    {
+                        hasUnsavedChanges = false;
+                        LoadFrom(filePath, quiet: false);
+                    }
+                }));
+                menu.AddSeparator("");
+                menu.AddItem(new GUIContent("Export Message JSON…"), false, () => Defer(() => ExportJson(file.Message, Path.GetFileNameWithoutExtension(filePath) + ".message")));
+                menu.AddItem(new GUIContent("Export Schema…"), false, () => Defer(ExportSchemaText));
+                menu.AddItem(new GUIContent("Show in Explorer"), false, () => EditorUtility.RevealInFinder(filePath));
+            }
+
+            menu.ShowAsContext();
         }
 
         // ─── GUI ─────────────────────────────────────────────────────────────────
 
-        private void InitStyles()
-        {
-            if (richMiniLabel != null)
-            {
-                return;
-            }
-
-            richMiniLabel = new GUIStyle(EditorStyles.miniLabel) { richText = true };
-            wrapLabel = new GUIStyle(EditorStyles.label) { wordWrap = true };
-        }
-
         private void OnGUI()
         {
-            InitStyles();
-            DrawToolbar();
+            var all = new Rect(0, 0, position.width, position.height);
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(all, FigTheme.Rail);
+            }
 
             if (file == null)
             {
-                DrawEmptyState();
+                DrawEmptyState(all);
                 return;
             }
 
-            var body = new Rect(0, ToolbarHeight, position.width, position.height - ToolbarHeight);
-            treeWidth = Mathf.Clamp(treeWidth, MinTreeWidth, Mathf.Max(MinTreeWidth, position.width - 320f));
-            var treeRect = new Rect(body.x, body.y, treeWidth, body.height);
-            var splitter = new Rect(treeRect.xMax, body.y, 4f, body.height);
-            var rightRect = new Rect(splitter.xMax, body.y, body.width - splitter.xMax, body.height);
+            leftWidth = Mathf.Clamp(leftWidth, MinSideWidth, Mathf.Max(MinSideWidth, position.width * 0.4f));
+            rightWidth = Mathf.Clamp(rightWidth, 240f, Mathf.Max(240f, position.width * 0.4f));
+            var railRect = new Rect(0, 0, RailWidth, position.height);
+            var leftRect = new Rect(railRect.xMax, 0, leftWidth, position.height);
+            var rightRect = new Rect(position.width - rightWidth, 0, rightWidth, position.height);
+            var canvasRect = new Rect(leftRect.xMax + 1, 0, rightRect.x - leftRect.xMax - 2, position.height);
 
-            DrawTree(treeRect);
-            DrawSplitter(splitter);
-
-            GUILayout.BeginArea(rightRect);
+            DrawRail(railRect);
+            DrawCanvas(canvasRect);
+            DrawLeftPanel(leftRect);
             DrawRightPanel(rightRect);
-            GUILayout.EndArea();
+            HandleSplitter(new Rect(leftRect.xMax - 2, 0, 5, position.height), 1);
+            HandleSplitter(new Rect(rightRect.x - 3, 0, 5, position.height), 2);
         }
 
-        private void DrawToolbar()
+        private void DrawRail(Rect r)
         {
-            GUILayout.BeginHorizontal(EditorStyles.toolbar);
-            if (GUILayout.Button("Open…", EditorStyles.toolbarButton, GUILayout.Width(56)))
+            if (Event.current.type == EventType.Repaint)
             {
-                Defer(ShowOpenDialog);
+                EditorGUI.DrawRect(r, FigTheme.Rail);
+                EditorGUI.DrawRect(new Rect(r.xMax - 1, r.y, 1, r.height), FigTheme.Border);
             }
 
-            using (new EditorGUI.DisabledScope(file == null))
-            {
-                if (GUILayout.Button("Reload", EditorStyles.toolbarButton, GUILayout.Width(54)))
-                {
-                    Defer(() =>
-                    {
-                        if (!hasUnsavedChanges || EditorUtility.DisplayDialog("Fig Editor", "Discard the unsaved edits and read the file again?", "Reload", "Cancel"))
-                        {
-                            hasUnsavedChanges = false;
-                            LoadFrom(filePath, quiet: false);
-                        }
-                    });
-                }
-
-                if (GUILayout.Button(hasUnsavedChanges ? "Save*" : "Save", EditorStyles.toolbarButton, GUILayout.Width(48)))
-                {
-                    Defer(() => SaveTo(filePath));
-                }
-
-                if (GUILayout.Button("Save As…", EditorStyles.toolbarButton, GUILayout.Width(66)))
-                {
-                    Defer(ShowSaveAsDialog);
-                }
-            }
-
-            GUILayout.Space(8);
-            if (file != null)
-            {
-                GUILayout.Label(new GUIContent(Path.GetFileName(filePath), filePath), EditorStyles.miniLabel);
-                GUILayout.FlexibleSpace();
-                if (imageCount < 0)
-                {
-                    imageCount = file.Images.Count();
-                }
-
-                GUILayout.Label($"{file.Nodes.Count} layers · {imageCount} images", EditorStyles.miniLabel);
-            }
-            else
-            {
-                GUILayout.FlexibleSpace();
-            }
-
-            GUILayout.EndHorizontal();
+            float y = 10;
+            RailButton(new Rect(r.x + 6, y, 36, 46), "layers", "Layers", Rail.Layers);
+            RailButton(new Rect(r.x + 6, y + 52, 36, 46), "assets", "Assets", Rail.Assets);
+            RailButton(new Rect(r.x + 6, y + 104, 36, 46), "file", "File", Rail.File);
         }
 
-        private void DrawEmptyState()
+        private void RailButton(Rect r, string icon, string label, Rail which)
         {
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            GUILayout.BeginVertical(GUILayout.Width(420));
-            GUILayout.Label("Fig Editor", EditorStyles.boldLabel);
-            GUILayout.Label("Open a Figma .fig file (File > Save local copy… in Figma) to browse its layers, edit fields, preview frames and replace images.", wrapLabel);
+            var iconRect = new Rect(r.x, r.y, r.width, 30);
+            bool active = rail == which;
+            if (Event.current.type == EventType.Repaint && active)
+            {
+                EditorGUI.DrawRect(new Rect(iconRect.x + 2, iconRect.y, iconRect.width - 4, iconRect.height), FigTheme.Hover);
+            }
+
+            if (FigTheme.IconButton(iconRect, icon, label, false, active ? FigTheme.Text : FigTheme.TextDim))
+            {
+                rail = which;
+                GUI.FocusControl(null);
+            }
+
+            GUI.Label(new Rect(r.x - 4, iconRect.yMax, r.width + 8, 14), label, active ? FigTheme.Small : FigTheme.Faint);
+        }
+
+        private void DrawEmptyState(Rect all)
+        {
+            var box = new Rect(all.center.x - 210, all.center.y - 120, 420, 240 + recentFiles.Count * 22);
+            GUI.Label(new Rect(box.x, box.y, box.width, 24), "Fig Editor", FigTheme.Title);
+            GUI.Label(new Rect(box.x, box.y + 26, box.width, 36), "Open a Figma .fig file (File › Save local copy… in Figma) to view and edit it.", FigTheme.Dim);
             if (!string.IsNullOrEmpty(loadError))
             {
-                EditorGUILayout.HelpBox(loadError, MessageType.Error);
+                EditorGUI.HelpBox(new Rect(box.x, box.y + 64, box.width, 40), loadError, MessageType.Error);
             }
 
-            GUILayout.Space(6);
-            if (GUILayout.Button("Open .fig file…", GUILayout.Height(28)))
+            if (FigTheme.AccentButton(new Rect(box.x, box.y + 112, 160, 32), "Open .fig file…"))
             {
                 Defer(ShowOpenDialog);
             }
 
-            GUILayout.EndVertical();
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            GUILayout.FlexibleSpace();
+            float y = box.y + 160;
+            if (recentFiles.Count > 0)
+            {
+                GUI.Label(new Rect(box.x, y, box.width, 18), "Recent", FigTheme.Small);
+                y += 20;
+                foreach (string recent in recentFiles.ToList())
+                {
+                    if (!File.Exists(recent))
+                    {
+                        continue;
+                    }
 
-            Rect drop = new Rect(0, ToolbarHeight, position.width, position.height - ToolbarHeight);
-            HandleFileDrop(drop);
+                    if (FigTheme.FlatButton(new Rect(box.x, y, box.width, 20), "  " + Path.GetFileName(recent), FigTheme.Label))
+                    {
+                        string p = recent;
+                        Defer(() => OpenFile(p));
+                    }
+
+                    y += 22;
+                }
+            }
+
+            HandleFileDrop(all);
         }
 
         private void HandleFileDrop(Rect area)
@@ -440,60 +479,145 @@ namespace Thinhnv.UnityTools.FigEditor
             e.Use();
         }
 
-        private void DrawSplitter(Rect rect)
+        private void HandleSplitter(Rect r, int which)
         {
-            EditorGUI.DrawRect(new Rect(rect.x + 1, rect.y, 1, rect.height), new Color(0f, 0f, 0f, 0.3f));
-            EditorGUIUtility.AddCursorRect(rect, MouseCursor.ResizeHorizontal);
+            EditorGUIUtility.AddCursorRect(r, MouseCursor.ResizeHorizontal);
             Event e = Event.current;
-            if (e.type == EventType.MouseDown && rect.Contains(e.mousePosition))
+            if (e.type == EventType.MouseDown && e.button == 0 && r.Contains(e.mousePosition))
             {
-                resizingTree = true;
+                resizing = which;
                 e.Use();
             }
-            else if (resizingTree && e.type == EventType.MouseDrag)
+            else if (resizing == which && e.type == EventType.MouseDrag)
             {
-                treeWidth = e.mousePosition.x;
+                if (which == 1)
+                {
+                    leftWidth = e.mousePosition.x - RailWidth;
+                }
+                else
+                {
+                    rightWidth = position.width - e.mousePosition.x;
+                }
+
                 Repaint();
                 e.Use();
             }
-            else if (e.type == EventType.MouseUp)
+            else if (e.type == EventType.MouseUp && resizing == which)
             {
-                resizingTree = false;
+                resizing = 0;
             }
         }
 
-        private void DrawRightPanel(Rect rect)
+        private void DrawLeftPanel(Rect r)
         {
-            GUILayout.BeginHorizontal(EditorStyles.toolbar);
-            int newTab = GUILayout.Toolbar(tab, TabNames, EditorStyles.toolbarButton);
-            if (newTab != tab)
+            if (Event.current.type == EventType.Repaint)
             {
-                tab = newTab;
-                GUI.FocusControl(null);
+                EditorGUI.DrawRect(r, FigTheme.Panel);
+                EditorGUI.DrawRect(new Rect(r.xMax, r.y, 1, r.height), FigTheme.Border);
             }
 
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-
-            var content = new Rect(0, ToolbarHeight, rect.width, rect.height - ToolbarHeight);
-            switch (tab)
+            // File header: menu, name, status.
+            if (FigTheme.IconButton(new Rect(r.x + 8, r.y + 8, 24, 24), "menu", "File menu"))
             {
-                case 0:
-                    DrawLayerTab();
+                ShowFileMenu();
+            }
+
+            string name = Path.GetFileNameWithoutExtension(filePath);
+            GUI.Label(new Rect(r.x + 38, r.y + 6, r.width - 46, 16), name, FigTheme.Bold);
+            GUI.Label(new Rect(r.x + 38, r.y + 22, r.width - 46, 14), hasUnsavedChanges ? "Edited — not saved" : "Saved", FigTheme.Faint);
+            FigTheme.Separator(new Rect(r.x, r.y + HeaderHeight + 4, r.width, 1));
+
+            var body = new Rect(r.x, r.y + HeaderHeight + 5, r.width, r.height - HeaderHeight - 5);
+            switch (rail)
+            {
+                case Rail.Layers:
+                    DrawLayersPanel(body);
                     break;
-                case 1:
-                    DrawBoardTab(content);
-                    break;
-                case 2:
-                    DrawImagesTab();
+                case Rail.Assets:
+                    GUILayout.BeginArea(body);
+                    DrawAssetsPanel(body);
+                    GUILayout.EndArea();
                     break;
                 default:
+                    GUILayout.BeginArea(new Rect(body.x + 8, body.y + 4, body.width - 12, body.height - 4));
                     DrawFileTab();
+                    GUILayout.EndArea();
                     break;
             }
         }
 
-        /// <summary>Select <paramref name="id"/> and expand its ancestors so the tree shows it.</summary>
+        private void DrawRightPanel(Rect r)
+        {
+            if (Event.current.type == EventType.Repaint)
+            {
+                EditorGUI.DrawRect(r, FigTheme.Panel);
+                EditorGUI.DrawRect(new Rect(r.x - 1, r.y, 1, r.height), FigTheme.Border);
+            }
+
+            // Header: undo / redo, zoom, save.
+            if (FigTheme.IconButton(new Rect(r.x + 8, r.y + 8, 24, 24), "undo", undo.CanUndo ? "Undo " + undo.UndoLabel : "Nothing to undo") && undo.CanUndo)
+            {
+                UndoStep(false);
+            }
+
+            if (FigTheme.IconButton(new Rect(r.x + 34, r.y + 8, 24, 24), "redo", undo.CanRedo ? "Redo " + undo.RedoLabel : "Nothing to redo") && undo.CanRedo)
+            {
+                UndoStep(true);
+            }
+
+            var zoomRect = new Rect(r.xMax - 132, r.y + 8, 52, 24);
+            if (FigTheme.FlatButton(zoomRect, Mathf.RoundToInt(viewScale * 100f) + "% ▾", FigTheme.Label))
+            {
+                ShowZoomMenu();
+            }
+
+            if (FigTheme.AccentButton(new Rect(r.xMax - 72, r.y + 8, 62, 24), hasUnsavedChanges ? "Save*" : "Save"))
+            {
+                Defer(() => SaveTo(filePath));
+            }
+
+            // Tabs.
+            float tx = r.x + 8;
+            foreach (RightTab t in new[] { RightTab.Design, RightTab.Prototype, RightTab.Inspect })
+            {
+                var tr = new Rect(tx, r.y + HeaderHeight + 2, 72, 24);
+                bool active = rightTab == t;
+                if (Event.current.type == EventType.Repaint && active)
+                {
+                    EditorGUI.DrawRect(tr, FigTheme.Hover);
+                }
+
+                GUI.Label(tr, t.ToString(), active ? FigTheme.TabActive : FigTheme.Tab);
+                if (Event.current.type == EventType.MouseDown && tr.Contains(Event.current.mousePosition))
+                {
+                    rightTab = t;
+                    GUI.FocusControl(null);
+                    Event.current.Use();
+                }
+
+                tx += 76;
+            }
+
+            FigTheme.Separator(new Rect(r.x, r.y + HeaderHeight + 30, r.width, 1));
+            var body = new Rect(r.x, r.y + HeaderHeight + 31, r.width, r.height - HeaderHeight - 31);
+            GUILayout.BeginArea(body);
+            switch (rightTab)
+            {
+                case RightTab.Design:
+                    DrawDesignPanel(body.width);
+                    break;
+                case RightTab.Prototype:
+                    DrawPrototypePanel(body.width);
+                    break;
+                default:
+                    DrawInspectPanel(body.width);
+                    break;
+            }
+
+            GUILayout.EndArea();
+        }
+
+        /// <summary>Select <paramref name="id"/> and expand its ancestors so the layers panel shows it.</summary>
         private void Select(string id, bool reveal = true)
         {
             selectedId = id;

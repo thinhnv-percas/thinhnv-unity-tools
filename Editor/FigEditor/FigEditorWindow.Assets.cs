@@ -144,6 +144,94 @@ namespace Thinhnv.UnityTools.FigEditor
             return imageUsers;
         }
 
+        // ─── Assets panel ────────────────────────────────────────────────────────
+
+        private Vector2 assetsScroll;
+        private string assetSearch = "";
+        private List<FigNode> components;
+
+        /// <summary>The Assets panel: the file's components (click to go to one), then its images.</summary>
+        private void DrawAssetsPanel(Rect body)
+        {
+            if (components == null || rowsDirty)
+            {
+                components = new List<FigNode>();
+                foreach (FigNode n in file.Nodes.Values)
+                {
+                    if (n.Type == "SYMBOL" || n.Type == "COMPONENT_SET")
+                    {
+                        components.Add(n);
+                    }
+                }
+
+                components.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.OrdinalIgnoreCase));
+            }
+
+            assetsScroll = EditorGUILayout.BeginScrollView(assetsScroll);
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(10);
+            assetSearch = EditorGUILayout.TextField(assetSearch, EditorStyles.toolbarSearchField);
+            GUILayout.Space(10);
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8);
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(12);
+            GUILayout.Label($"Components ({components.Count})", FigTheme.Bold);
+            GUILayout.EndHorizontal();
+            int shown = 0;
+            foreach (FigNode c in components)
+            {
+                if (!string.IsNullOrEmpty(assetSearch) && c.Label.IndexOf(assetSearch, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                if (++shown > 500)
+                {
+                    break;
+                }
+
+                Rect r = GUILayoutUtility.GetRect(10, 26, GUILayout.ExpandWidth(true));
+                r.x += 6;
+                r.width -= 12;
+                bool selected = c.Id == selectedId;
+                if (Event.current.type == EventType.Repaint && (selected || r.Contains(Event.current.mousePosition)))
+                {
+                    EditorGUI.DrawRect(r, selected ? FigTheme.SelectedComponent : new Color(1, 1, 1, 0.04f));
+                }
+
+                FigTheme.DrawIcon(new Rect(r.x + 4, r.y + 5, 16, 16), "component", FigTheme.Component, 14);
+                GUI.Label(new Rect(r.x + 26, r.y, r.width - 26, r.height), c.Label + "   ", FigTheme.RowLabel);
+                FigNode page = PageOf(c);
+                if (page != null && page.Id != boardPageId)
+                {
+                    GUI.Label(new Rect(r.xMax - 90, r.y, 88, r.height), page.Name, FigTheme.Faint);
+                }
+
+                if (Event.current.type == EventType.MouseDown && r.Contains(Event.current.mousePosition))
+                {
+                    SetBoardSelection(c.Id, false);
+                    pendingZoomTo = c.Id;
+                    Event.current.Use();
+                }
+            }
+
+            if (components.Count == 0)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(12);
+                GUILayout.Label("No components in this file.", FigTheme.Dim);
+                GUILayout.EndHorizontal();
+            }
+
+            GUILayout.Space(10);
+            FigTheme.Separator(GUILayoutUtility.GetRect(10, 1, GUILayout.ExpandWidth(true)));
+            GUILayout.Space(6);
+            DrawImagesTab();
+            EditorGUILayout.EndScrollView();
+        }
+
         // ─── Images tab ──────────────────────────────────────────────────────────
 
         private void DrawImagesTab()
@@ -177,7 +265,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 Rect row = EditorGUILayout.BeginHorizontal(GUILayout.Height(ThumbSize + 6));
                 if (focused && Event.current.type == EventType.Repaint)
                 {
-                    EditorGUI.DrawRect(row, SelectionColor);
+                    EditorGUI.DrawRect(row, FigTheme.Selected);
                 }
 
                 Rect thumb = GUILayoutUtility.GetRect(ThumbSize, ThumbSize, GUILayout.Width(ThumbSize), GUILayout.Height(ThumbSize));

@@ -8,312 +8,84 @@ using UnityEngine;
 namespace Thinhnv.UnityTools.FigEditor
 {
     /// <summary>
-    /// The Layer tab: common properties on top (name, visibility, opacity, size, position, text,
-    /// solid fills), then every field of the node change, editable through the file's schema.
+    /// The Inspect tab's raw editor: every field of a node change (or of the message), editable
+    /// through the file's own schema — add / remove fields, grow and shrink arrays, inline
+    /// controls for colours, vectors, GUIDs and byte arrays. Also the layer operations shared by
+    /// the panels (reorder, duplicate, delete) and the export helpers.
     /// </summary>
     public partial class FigEditorWindow
     {
         private const int ArrayPageSize = 50;
         private const int MaxInlineHex = 64;
 
-        private Vector2 inspectorScroll;
-        private bool showRawFields = true;
         private readonly Dictionary<string, bool> foldouts = new();
         private readonly Dictionary<string, int> arrayPages = new();
 
-        private void DrawLayerTab()
+        private Vector2 inspectScroll;
+
+        /// <summary>
+        /// The Inspect tab: the selected layer's fields exactly as the file stores them (or, for a
+        /// layer inside an instance, its main's fields and the override rows applied to it).
+        /// </summary>
+        private void DrawInspectPanel(float width)
         {
-            FigNode node = Selected;
-            if (node == null)
+            inspectScroll = EditorGUILayout.BeginScrollView(inspectScroll);
+            float labelWidth = EditorGUIUtility.labelWidth;
+            EditorGUIUtility.labelWidth = Mathf.Min(140, width * 0.45f);
+            FigNode n = Selected;
+            FigSceneNode s = SelectedSceneNode;
+            GUILayout.Space(8);
+            if (n != null)
             {
-                GUILayout.Space(12);
-                EditorGUILayout.HelpBox("Select a layer in the tree to inspect and edit it.", MessageType.Info);
-                foreach (string warning in file.Warnings)
-                {
-                    EditorGUILayout.HelpBox(warning, MessageType.Warning);
-                }
-
-                return;
-            }
-
-            inspectorScroll = EditorGUILayout.BeginScrollView(inspectorScroll);
-            DrawLayerHeader(node);
-            EditorGUILayout.Space(4);
-            DrawQuickProperties(node);
-            EditorGUILayout.Space(8);
-
-            showRawFields = EditorGUILayout.Foldout(showRawFields, $"All fields ({node.Change.Members.Count})", true, EditorStyles.foldoutHeader);
-            if (showRawFields)
-            {
-                EditorGUI.indentLevel++;
-                DrawObjectMembers(node.Change, "node/" + node.Id);
-                EditorGUI.indentLevel--;
-            }
-
-            EditorGUILayout.Space(12);
-            EditorGUILayout.EndScrollView();
-        }
-
-        private void DrawLayerHeader(FigNode node)
-        {
-            EditorGUILayout.BeginHorizontal();
-            GUILayout.Label(ShortType(node.Type), EditorStyles.boldLabel, GUILayout.ExpandWidth(false));
-            GUILayout.Label(node.Id, EditorStyles.miniLabel);
-            GUILayout.FlexibleSpace();
-            if (node.Parent != null && GUILayout.Button("Parent", EditorStyles.miniButtonLeft, GUILayout.Width(50)))
-            {
-                string parent = node.Parent.Id;
-                Defer(() => Select(parent));
-            }
-
-            if (GUILayout.Button("▲", EditorStyles.miniButtonMid, GUILayout.Width(24)))
-            {
-                Defer(() => MoveNode(node, -1));
-            }
-
-            if (GUILayout.Button("▼", EditorStyles.miniButtonMid, GUILayout.Width(24)))
-            {
-                Defer(() => MoveNode(node, 1));
-            }
-
-            if (GUILayout.Button("Duplicate", EditorStyles.miniButtonMid, GUILayout.Width(64)))
-            {
-                Defer(() => DuplicateNode(node));
-            }
-
-            if (GUILayout.Button("Delete", EditorStyles.miniButtonMid, GUILayout.Width(50)))
-            {
-                Defer(() => DeleteNode(node));
-            }
-
-            if (GUILayout.Button("JSON", EditorStyles.miniButtonRight, GUILayout.Width(42)))
-            {
-                Defer(() => ExportJson(node.Change, node.Label));
-            }
-
-            EditorGUILayout.EndHorizontal();
-
-            if (node.Parent != null)
-            {
-                GUILayout.Label("in " + PathOf(node), EditorStyles.miniLabel);
-            }
-        }
-
-        // ─── Quick properties ────────────────────────────────────────────────────
-
-        private void DrawQuickProperties(FigNode node)
-        {
-            KiwiValue change = node.Change;
-
-            KiwiValue name = change.Get("name");
-            if (name != null || change.Def.FieldByName("name") != null)
-            {
-                EditorGUI.BeginChangeCheck();
-                string newName = EditorGUILayout.DelayedTextField("Name", name?.String ?? "");
-                if (EditorGUI.EndChangeCheck())
-                {
-                    RecordFields("Rename", null, change, "name");
-                    change.Set("name", KiwiValue.FromString(newName));
-                    MarkDirty();
-                    OnStructureChanged();
-                }
-            }
-
-            DrawOptionalBool(change, "visible", "Visible", true);
-            DrawOptionalBool(change, "locked", "Locked", false);
-
-            if (change.Def.FieldByName("opacity") != null)
-            {
-                KiwiValue opacity = change.Get("opacity");
-                EditorGUI.BeginChangeCheck();
-                float value = EditorGUILayout.Slider("Opacity", opacity?.AsFloat ?? 1f, 0f, 1f);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    RecordFields("Opacity", "opacity:" + node.Id, change, "opacity");
-                    change.Set("opacity", KiwiValue.FromFloat(value));
-                    MarkDirty();
-                    InvalidateBoardNode(node.Id);
-                }
-            }
-
-            KiwiValue size = change.Get("size");
-            if (size != null)
-            {
-                EditorGUI.BeginChangeCheck();
-                Vector2 newSize = EditorGUILayout.Vector2Field("Size", new Vector2(size.Get("x")?.AsFloat ?? 0, size.Get("y")?.AsFloat ?? 0));
-                if (EditorGUI.EndChangeCheck())
-                {
-                    RecordFields("Resize", "size:" + node.Id, change, "size");
-                    SetFloat(size, "x", Mathf.Max(0, newSize.x));
-                    SetFloat(size, "y", Mathf.Max(0, newSize.y));
-                    MarkDirty();
-                    InvalidateBoardNode(node.Id);
-                }
-            }
-
-            KiwiValue transform = change.Get("transform");
-            if (transform != null)
-            {
-                EditorGUI.BeginChangeCheck();
-                Vector2 newPos = EditorGUILayout.Vector2Field("Position", new Vector2(transform.Get("m02")?.AsFloat ?? 0, transform.Get("m12")?.AsFloat ?? 0));
-                if (EditorGUI.EndChangeCheck())
-                {
-                    RecordFields("Move", "position:" + node.Id, change, "transform");
-                    SetFloat(transform, "m02", newPos.x);
-                    SetFloat(transform, "m12", newPos.y);
-                    MarkDirty();
-                    InvalidateBoardNode(node.Id);
-                }
-
-                float m00 = transform.Get("m00")?.AsFloat ?? 1;
-                float m10 = transform.Get("m10")?.AsFloat ?? 0;
-                float rotation = Mathf.Atan2(m10, m00) * Mathf.Rad2Deg;
-                if (Mathf.Abs(rotation) > 0.01f)
-                {
-                    EditorGUILayout.LabelField("Rotation", rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
-                }
-            }
-
-            KiwiValue characters = change.Path("textData.characters");
-            if (characters != null)
-            {
-                EditorGUILayout.LabelField("Text");
-                EditorGUI.BeginChangeCheck();
-                GUI.SetNextControlName("FigTextArea");
-                string text = EditorGUILayout.TextArea(characters.String ?? "", GUILayout.MinHeight(48));
-                if (focusTextField && Event.current.type == EventType.Repaint)
-                {
-                    // Double-clicking text on the board lands here.
-                    focusTextField = false;
-                    EditorGUI.FocusTextInControl("FigTextArea");
-                }
-
-                if (EditorGUI.EndChangeCheck())
-                {
-                    RecordFields("Edit Text", "text:" + node.Id, change, "textData", "derivedTextData");
-                    FigFile.SetText(node, text);
-                    MarkDirty();
-                    InvalidateBoardNode(node.Id);
-                }
-
-                if (change.Get("derivedTextData") == null && hasUnsavedChanges)
-                {
-                    EditorGUILayout.HelpBox("Text layout is recomputed by Figma when the file opens (the cached layout was dropped).", MessageType.None);
-                }
-            }
-
-            DrawPaintList(node, "fillPaints", "Fills");
-            DrawPaintList(node, "strokePaints", "Strokes");
-        }
-
-        private void DrawOptionalBool(KiwiValue obj, string field, string label, bool fallback)
-        {
-            if (obj.Def.FieldByName(field) == null)
-            {
-                return;
-            }
-
-            KiwiValue v = obj.Get(field);
-            EditorGUI.BeginChangeCheck();
-            bool value = EditorGUILayout.Toggle(label, v?.AsBool ?? fallback);
-            if (EditorGUI.EndChangeCheck())
-            {
-                RecordFields(label, null, obj, field);
-                obj.Set(field, KiwiValue.FromBool(value));
-                MarkDirty();
-                rowsDirty = true;
-                InvalidateBoard();
-            }
-        }
-
-        private void DrawPaintList(FigNode node, string field, string label)
-        {
-            KiwiValue change = node.Change;
-            List<KiwiValue> paints = change.Get(field)?.Items;
-            if (paints == null || paints.Count == 0)
-            {
-                return;
-            }
-
-            EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
-            for (int i = 0; i < paints.Count; i++)
-            {
-                KiwiValue paint = paints[i];
-                string type = paint.Get("type")?.EnumName ?? "?";
-                EditorGUILayout.BeginHorizontal();
-                DrawOptionalBoolInline(node, field, paint, "visible", true);
-
-                KiwiValue color = paint.Get("color");
-                if (type == "SOLID" && color != null)
-                {
-                    float opacity = paint.Get("opacity")?.AsFloat ?? 1f;
-                    Color c = ToColor(color);
-                    c.a *= opacity;
-                    EditorGUI.BeginChangeCheck();
-                    Color picked = EditorGUILayout.ColorField(GUIContent.none, c, true, true, false);
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        RecordFields(label + " Colour", field + ":" + node.Id, change, field);
-                        // The picker's alpha goes to the paint's opacity; the colour keeps its own alpha.
-                        float a = color.Get("a")?.AsFloat ?? 1f;
-                        SetFloat(color, "r", picked.r);
-                        SetFloat(color, "g", picked.g);
-                        SetFloat(color, "b", picked.b);
-                        paint.Set("opacity", KiwiValue.FromFloat(a > 0 ? Mathf.Clamp01(picked.a / a) : picked.a));
-                        MarkDirty();
-                        InvalidateBoardNode(node.Id);
-                    }
-                }
-                else
-                {
-                    GUILayout.Label(type, GUILayout.Width(140));
-                }
-
-                byte[] hash = paint.Path("image.hash")?.Bytes;
-                if (hash != null && hash.Length > 0)
-                {
-                    Texture2D tex = ImageTexture(FigUtil.Hex(hash));
-                    if (tex != null)
-                    {
-                        Rect r = GUILayoutUtility.GetRect(40, 40, GUILayout.Width(40));
-                        GUI.DrawTexture(r, tex, ScaleMode.ScaleToFit);
-                    }
-
-                    if (GUILayout.Button("Image…", EditorStyles.miniButton, GUILayout.Width(60)))
-                    {
-                        string hex = FigUtil.Hex(hash);
-                        Defer(() =>
-                        {
-                            tab = 2;
-                            imageFocus = hex;
-                            imageFocusScroll = true;
-                        });
-                    }
-                }
-
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"{n.Type} · {n.Id}", FigTheme.Dim);
                 GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
-            }
-        }
+                if (GUILayout.Button("JSON…", EditorStyles.miniButton, GUILayout.Width(52)))
+                {
+                    Defer(() => ExportJson(n.Change, n.Label));
+                }
 
-        /// <summary>A toggle for a field of a paint; undo snapshots the node's whole paint list.</summary>
-        private void DrawOptionalBoolInline(FigNode node, string listField, KiwiValue obj, string field, bool fallback)
-        {
-            if (obj.Def.FieldByName(field) == null)
+                GUILayout.EndHorizontal();
+                GUILayout.Label($"{n.Change.Members.Count} fields — edits here are not undoable.", FigTheme.Faint);
+                GUILayout.Space(4);
+                DrawObjectMembers(n.Change, "node/" + n.Id);
+            }
+            else if (s != null && s.Expanded)
             {
-                return;
+                GUILayout.Label("Inside an instance: the main component's layer, read-only.", FigTheme.Dim);
+                GUILayout.Label($"{s.View.Rows?.Count ?? 0} override / derived rows apply to it.", FigTheme.Faint);
+                using (new EditorGUI.DisabledScope(true))
+                {
+                    DrawObjectMembers(s.View.Base, "expanded/" + s.Id);
+                    if (s.View.Rows != null)
+                    {
+                        for (int i = 0; i < s.View.Rows.Count; i++)
+                        {
+                            GUILayout.Space(6);
+                            GUILayout.Label("Row " + (i + 1), FigTheme.Bold);
+                            DrawObjectMembers(s.View.Rows[i], "expanded/" + s.Id + "/row" + i);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                GUILayout.Label("Message fields (besides nodeChanges and blobs)", FigTheme.Bold);
+                foreach (KiwiMember m in new List<KiwiMember>(file.Message.Members))
+                {
+                    if (m.Field.Name == "nodeChanges" || m.Field.Name == "blobs")
+                    {
+                        EditorGUILayout.LabelField(m.Field.Name, m.Value.Summary());
+                        continue;
+                    }
+
+                    DrawField(m.Field, m.Value, "message/" + m.Field.Name, m.Field.Name, null);
+                }
             }
 
-            KiwiValue v = obj.Get(field);
-            EditorGUI.BeginChangeCheck();
-            bool value = EditorGUILayout.Toggle(v?.AsBool ?? fallback, GUILayout.Width(18));
-            if (EditorGUI.EndChangeCheck())
-            {
-                RecordFields("Toggle Paint", null, node.Change, listField);
-                obj.Set(field, KiwiValue.FromBool(value));
-                MarkDirty();
-                InvalidateBoardNode(node.Id);
-            }
+            EditorGUIUtility.labelWidth = labelWidth;
+            GUILayout.Space(16);
+            EditorGUILayout.EndScrollView();
         }
 
         private static Color ToColor(KiwiValue color)

@@ -669,6 +669,145 @@ namespace Thinhnv.UnityTools.FigEditor
             return Find(FigUtil.GuidString(copyRoot.Get("guid")));
         }
 
+        // ─── New layers ──────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Add a new layer of <paramref name="type"/> under <paramref name="parent"/>, on top of its
+        /// siblings, at <paramref name="x"/>, <paramref name="y"/> (parent space) and
+        /// <paramref name="w"/> × <paramref name="h"/>. <paramref name="customize"/> sets the rest
+        /// (fills, text…) through the helpers below. Fields the file's schema lacks are skipped.
+        /// Returns the new layer, or null when the schema can't describe it.
+        /// </summary>
+        public FigNode CreateNode(FigNode parent, string type, string name, float x, float y, float w, float h, Action<KiwiValue> customize = null)
+        {
+            KiwiDef nodeDef = MessageDef.FieldByName("nodeChanges")?.TypeDef;
+            if (nodeDef == null || parent == null)
+            {
+                return null;
+            }
+
+            KiwiValue n = KiwiValue.FromObject(nodeDef, new List<KiwiMember>());
+            ulong session = 0, local = 0;
+            foreach (KiwiValue change in NodeChanges)
+            {
+                KiwiValue g = change.Get("guid");
+                if (g?.Get("sessionID") == null || g.Get("localID") == null)
+                {
+                    continue;
+                }
+
+                if (g.Get("sessionID").Uint > session)
+                {
+                    session = g.Get("sessionID").Uint;
+                    local = 0;
+                }
+
+                if (g.Get("sessionID").Uint == session)
+                {
+                    local = Math.Max(local, g.Get("localID").Uint);
+                }
+            }
+
+            KiwiValue guid = Default(nodeDef, "guid");
+            guid?.Set("sessionID", KiwiValue.FromUint(session));
+            guid?.Set("localID", KiwiValue.FromUint(local + 1));
+            n.Set("guid", guid);
+            SetEnum(n, "phase", "CREATED");
+
+            KiwiValue parentIndex = Default(nodeDef, "parentIndex");
+            if (parentIndex != null)
+            {
+                parentIndex.Set("guid", parent.Change.Get("guid").Clone());
+                string last = parent.Children.Count > 0 ? parent.Children[parent.Children.Count - 1].Position : "";
+                parentIndex.Set("position", KiwiValue.FromString(last + "~"));
+                n.Set("parentIndex", parentIndex);
+            }
+
+            if (!SetEnum(n, "type", type))
+            {
+                return null;
+            }
+
+            n.Set("name", KiwiValue.FromString(name));
+            n.Set("visible", KiwiValue.FromBool(true));
+            n.Set("opacity", KiwiValue.FromFloat(1f));
+            KiwiValue size = Default(nodeDef, "size");
+            size?.Set("x", KiwiValue.FromFloat(w));
+            size?.Set("y", KiwiValue.FromFloat(h));
+            n.Set("size", size);
+            KiwiValue transform = Default(nodeDef, "transform");
+            if (transform != null)
+            {
+                transform.Set("m00", KiwiValue.FromFloat(1));
+                transform.Set("m11", KiwiValue.FromFloat(1));
+                transform.Set("m02", KiwiValue.FromFloat(x));
+                transform.Set("m12", KiwiValue.FromFloat(y));
+                n.Set("transform", transform);
+            }
+
+            customize?.Invoke(n);
+            NodeChanges.Add(n);
+            RebuildIndex();
+            return Find(FigUtil.GuidString(guid));
+        }
+
+        /// <summary>A fresh value for field <paramref name="field"/> of <paramref name="def"/>, or null when it has none.</summary>
+        public static KiwiValue Default(KiwiDef def, string field)
+        {
+            KiwiField f = def?.FieldByName(field);
+            return f == null ? null : KiwiSchema.DefaultField(f);
+        }
+
+        /// <summary>Set enum field <paramref name="field"/> to the value named <paramref name="name"/>.</summary>
+        public static bool SetEnum(KiwiValue owner, string field, string name)
+        {
+            KiwiField f = owner.Def.FieldByName(field);
+            KiwiField value = f?.TypeDef?.FieldByName(name);
+            if (value == null || f.TypeDef.Kind != KiwiDefKind.Enum)
+            {
+                return false;
+            }
+
+            return owner.Set(field, KiwiValue.FromEnum(f.TypeDef, value.Value));
+        }
+
+        /// <summary>A solid paint of <paramref name="color"/> for a <c>fillPaints</c> / <c>strokePaints</c> list of <paramref name="owner"/>.</summary>
+        public static KiwiValue SolidPaint(KiwiValue owner, string listField, float r, float g, float b, float a)
+        {
+            KiwiField list = owner.Def.FieldByName(listField);
+            if (list?.TypeDef == null)
+            {
+                return null;
+            }
+
+            KiwiValue paint = KiwiSchema.DefaultElement(list);
+            SetEnum(paint, "type", "SOLID");
+            KiwiValue color = Default(paint.Def, "color");
+            if (color != null)
+            {
+                color.Set("r", KiwiValue.FromFloat(r));
+                color.Set("g", KiwiValue.FromFloat(g));
+                color.Set("b", KiwiValue.FromFloat(b));
+                color.Set("a", KiwiValue.FromFloat(1f));
+                paint.Set("color", color);
+            }
+
+            paint.Set("opacity", KiwiValue.FromFloat(a));
+            paint.Set("visible", KiwiValue.FromBool(true));
+            SetEnum(paint, "blendMode", "NORMAL");
+            return paint;
+        }
+
+        /// <summary>Replace <paramref name="listField"/> of <paramref name="owner"/> with one solid paint.</summary>
+        public static void SetSolidFill(KiwiValue owner, string listField, float r, float g, float b, float a)
+        {
+            KiwiValue paint = SolidPaint(owner, listField, r, g, b, a);
+            if (paint != null)
+            {
+                owner.Set(listField, KiwiValue.FromArray(new List<KiwiValue> { paint }));
+            }
+        }
+
         // ─── Saving ──────────────────────────────────────────────────────────────
 
         public byte[] BuildCanvas()
