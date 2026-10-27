@@ -10,7 +10,7 @@ namespace Thinhnv.UnityTools.FigEditor
     /// <summary>
     /// Open, inspect and edit Figma <c>.fig</c> files inside the Unity Editor: browse the layer
     /// tree, edit any field of a layer (names, visibility, sizes, positions, text, colours, enums —
-    /// or any raw field the file's schema defines), preview a frame's layout, replace or export
+    /// or any raw field the file's schema defines), edit pages on a Figma-like board, replace or export
     /// images, edit <c>meta.json</c> and the thumbnail, then save back to <c>.fig</c>.
     ///
     /// The file is decoded generically with the schema it carries (see <see cref="FigFile"/>), so
@@ -25,7 +25,7 @@ namespace Thinhnv.UnityTools.FigEditor
         private const float ToolbarHeight = 21f;
         private const float MinTreeWidth = 180f;
 
-        private static readonly string[] TabNames = { "Layer", "Preview", "Images", "File" };
+        private static readonly string[] TabNames = { "Layer", "Board", "Images", "File" };
 
         [SerializeField] private string filePath;
         [SerializeField] private string selectedId;
@@ -37,6 +37,7 @@ namespace Thinhnv.UnityTools.FigEditor
         private string loadError;
         private bool backupMade;
         private bool resizingTree;
+        private int imageCount = -1;
 
         private GUIStyle richMiniLabel;
         private GUIStyle wrapLabel;
@@ -80,6 +81,7 @@ namespace Thinhnv.UnityTools.FigEditor
             saveChangesMessage = "The .fig file open in Fig Editor has unsaved edits. Save them before closing?";
             expanded = new HashSet<string>(expandedIds);
             AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+            EnableBoard();
 
             // Unsaved edits don't survive a domain reload (the decoded tree isn't serializable), so
             // the file is simply read again from disk.
@@ -93,6 +95,7 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
             expandedIds = new List<string>(expanded);
+            DisableBoard();
             ClearTextureCache();
         }
 
@@ -174,6 +177,7 @@ namespace Thinhnv.UnityTools.FigEditor
 
                 OnStructureChanged();
                 ClearTextureCache();
+                ResetBoard();
                 foreach (FigNode root in file.Roots)
                 {
                     expanded.Add(root.Id);
@@ -279,7 +283,8 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             rowsDirty = true;
             imageUsers = null;
-            previewDirty = true;
+            InvalidateBoard();
+            imageCount = -1;
         }
 
         // ─── GUI ─────────────────────────────────────────────────────────────────
@@ -358,7 +363,12 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 GUILayout.Label(new GUIContent(Path.GetFileName(filePath), filePath), EditorStyles.miniLabel);
                 GUILayout.FlexibleSpace();
-                GUILayout.Label($"{file.Nodes.Count} layers · {file.Images.Count()} images", EditorStyles.miniLabel);
+                if (imageCount < 0)
+                {
+                    imageCount = file.Images.Count();
+                }
+
+                GUILayout.Label($"{file.Nodes.Count} layers · {imageCount} images", EditorStyles.miniLabel);
             }
             else
             {
@@ -472,7 +482,7 @@ namespace Thinhnv.UnityTools.FigEditor
                     DrawLayerTab();
                     break;
                 case 1:
-                    DrawPreviewTab(content);
+                    DrawBoardTab(content);
                     break;
                 case 2:
                     DrawImagesTab();

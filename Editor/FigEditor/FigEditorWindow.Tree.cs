@@ -376,11 +376,11 @@ namespace Thinhnv.UnityTools.FigEditor
             menu.AddItem(new GUIContent("Expand All"), false, () => ToggleExpanded(node, true, true));
             menu.AddItem(new GUIContent("Collapse All"), false, () => ToggleExpanded(node, false, true));
             menu.AddSeparator("");
-            menu.AddItem(new GUIContent("Preview"), false, () =>
+            menu.AddItem(new GUIContent("Show on Board"), false, () =>
             {
-                selectedId = node.Id;
+                Select(node.Id);
                 tab = 1;
-                previewDirty = true;
+                pendingZoomTo = node.Id;
             });
             menu.AddItem(new GUIContent("Copy GUID"), false, () => EditorGUIUtility.systemCopyBuffer = node.Id);
             menu.AddItem(new GUIContent("Copy Name"), false, () => EditorGUIUtility.systemCopyBuffer = node.Name);

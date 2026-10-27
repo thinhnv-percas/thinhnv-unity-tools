@@ -256,7 +256,7 @@ namespace Thinhnv.UnityTools.FigEditor
             imageUsers = null;
             imageFocus = newHex;
             imageFocusScroll = true;
-            previewDirty = true;
+            InvalidateBoard();
             MarkDirty();
             Debug.Log($"[Fig Editor] Replaced image {hex} with {Path.GetFileName(path)} ({newHex}); updated {references} reference(s).");
         }
