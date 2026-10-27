@@ -29,6 +29,7 @@ namespace Thinhnv.UnityTools.FigEditor
         private bool keepRatio;
         private int exportScale = 2;
         private readonly HashSet<string> openEffects = new();
+        private readonly HashSet<string> openPaints = new();
 
         private void DrawDesignPanel(float width)
         {
@@ -53,7 +54,7 @@ namespace Thinhnv.UnityTools.FigEditor
                     DrawLayoutSection(s, n, view);
                     DrawAutoLayoutSection(view);
                     DrawAppearanceSection(s, n, view);
-                    if ((s?.Type ?? n.Type) == "TEXT")
+                    if (FigScene.IsText(s?.Type ?? n.Type))
                     {
                         DrawTypographySection(n, view);
                     }
@@ -209,6 +210,8 @@ namespace Thinhnv.UnityTools.FigEditor
                     return "Boolean";
                 case "REGULAR_POLYGON":
                     return "Polygon";
+                case "TEXT_PATH":
+                    return "Text on path";
                 default:
                     return type.Length > 0 ? type.Substring(0, 1) + type.Substring(1).ToLowerInvariant() : type;
             }
@@ -631,6 +634,13 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             KiwiValue change = n?.Change;
             SectionHeader("Text");
+            if (n?.Type == "TEXT_PATH")
+            {
+                BeginRow();
+                GUILayout.Label("Text on a path. Edited text is drawn off the path until Figma lays it out again.", EditorStyles.wordWrappedMiniLabel);
+                EndRow();
+            }
+
             BeginRow();
             EditorGUI.BeginChangeCheck();
             GUI.SetNextControlName("FigTextArea");
@@ -850,7 +860,15 @@ namespace Thinhnv.UnityTools.FigEditor
             KiwiValue change = n?.Change;
             string type = paint.Get("type")?.EnumName ?? "SOLID";
             bool visible = paint.Get("visible")?.AsBool ?? true;
+            string key = (n?.Id ?? "") + "/" + field + index;
+            bool open = openPaints.Contains(key) && type != "IMAGE";
+            bool changedList = false;
             BeginRow();
+            if (type != "IMAGE" && FigTheme.IconButton(GUILayoutUtility.GetRect(20, 20, GUILayout.Width(20)), open ? "chevron_down" : "chevron_right", "Edit paint"))
+            {
+                TogglePaintEditor(key);
+            }
+
             Color oldColor = GUI.color;
             if (!visible)
             {
@@ -923,40 +941,24 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
                 default:
                 {
-                    // Gradients: their stop colours, editable.
-                    List<KiwiValue> stops = paint.Get("stops")?.Items;
-                    GUILayout.Label(Pretty(type.Replace("GRADIENT_", "")), FigTheme.Dim, GUILayout.Width(52));
-                    if (stops != null)
+                    // Gradients: a swatch of the ramp (click to edit) and the gradient type.
+                    Rect swatch = GUILayoutUtility.GetRect(36, 20, GUILayout.Width(36));
+                    DrawGradientSwatch(swatch, paint);
+                    if (Event.current.type == EventType.MouseDown && swatch.Contains(Event.current.mousePosition))
                     {
-                        for (int si = 0; si < stops.Count && si < 4; si++)
-                        {
-                            KiwiValue sc = stops[si].Get("color");
-                            if (sc == null)
-                            {
-                                continue;
-                            }
-
-                            EditorGUI.BeginChangeCheck();
-                            Color picked = EditorGUILayout.ColorField(GUIContent.none, FigPaint.ReadColor(sc), false, true, false, GUILayout.Width(26));
-                            if (EditorGUI.EndChangeCheck() && change != null)
-                            {
-                                RecordFields("Gradient Stop", field + index + "stop" + si + ":" + n.Id, change, field);
-                                KiwiValue live = change.Get(field)?.Items?[index]?.Get("stops")?.Items?[si]?.Get("color");
-                                if (live != null)
-                                {
-                                    SetFloat(live, "r", picked.r);
-                                    SetFloat(live, "g", picked.g);
-                                    SetFloat(live, "b", picked.b);
-                                    SetFloat(live, "a", picked.a);
-                                }
-
-                                MarkDirty();
-                                InvalidateBoardNode(n.Id);
-                            }
-                        }
+                        TogglePaintEditor(key);
+                        Event.current.Use();
                     }
 
-                    GUILayout.FlexibleSpace();
+                    int gi = Math.Max(0, Array.IndexOf(PaintTypes, type));
+                    EditorGUI.BeginChangeCheck();
+                    int pick = EditorGUILayout.Popup(gi, PaintTypeLabels, GUILayout.MinWidth(54));
+                    if (EditorGUI.EndChangeCheck() && change != null && pick != gi)
+                    {
+                        ConvertPaint(n, field, index, PaintTypes[pick]);
+                        changedList = true;
+                    }
+
                     break;
                 }
             }
@@ -991,7 +993,12 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             EndRow();
-            return changed;
+            if (open && !changed && !changedList)
+            {
+                changedList = DrawPaintEditor(n, field, paint, index, key);
+            }
+
+            return changed || changedList;
         }
 
         // ─── Effects ─────────────────────────────────────────────────────────────

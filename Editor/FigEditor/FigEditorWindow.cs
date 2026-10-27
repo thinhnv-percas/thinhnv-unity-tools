@@ -221,6 +221,19 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
+        /// <summary>Drop every edit since the last save: read the file from disk again (history cleared).</summary>
+        private void DiscardChanges()
+        {
+            if (file == null || !hasUnsavedChanges ||
+                !EditorUtility.DisplayDialog("Fig Editor", $"Discard all unsaved edits to {Path.GetFileName(filePath)}?\n\nThis can't be undone.", "Discard", "Cancel"))
+            {
+                return;
+            }
+
+            hasUnsavedChanges = false;
+            LoadFrom(filePath, quiet: false);
+        }
+
         private void ShowOpenDialog()
         {
             string dir = string.IsNullOrEmpty(filePath) ? Application.dataPath : Path.GetDirectoryName(filePath);
@@ -325,14 +338,14 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 menu.AddItem(new GUIContent("Save"), false, () => Defer(() => SaveTo(filePath)));
                 menu.AddItem(new GUIContent("Save As…"), false, () => Defer(ShowSaveAsDialog));
-                menu.AddItem(new GUIContent("Reload"), false, () => Defer(() =>
+                if (hasUnsavedChanges)
                 {
-                    if (!hasUnsavedChanges || EditorUtility.DisplayDialog("Fig Editor", "Discard the unsaved edits and read the file again?", "Reload", "Cancel"))
-                    {
-                        hasUnsavedChanges = false;
-                        LoadFrom(filePath, quiet: false);
-                    }
-                }));
+                    menu.AddItem(new GUIContent("Discard Changes"), false, () => Defer(DiscardChanges));
+                }
+                else
+                {
+                    menu.AddItem(new GUIContent("Reload"), false, () => Defer(() => LoadFrom(filePath, quiet: false)));
+                }
                 menu.AddSeparator("");
                 menu.AddItem(new GUIContent("Export Message JSON…"), false, () => Defer(() => ExportJson(file.Message, Path.GetFileNameWithoutExtension(filePath) + ".message")));
                 menu.AddItem(new GUIContent("Export Schema…"), false, () => Defer(ExportSchemaText));
@@ -523,8 +536,13 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             string name = Path.GetFileNameWithoutExtension(filePath);
-            GUI.Label(new Rect(r.x + 38, r.y + 6, r.width - 46, 16), name, FigTheme.Bold);
-            GUI.Label(new Rect(r.x + 38, r.y + 22, r.width - 46, 14), hasUnsavedChanges ? "Edited — not saved" : "Saved", FigTheme.Faint);
+            float labelWidth = r.width - 46 - (hasUnsavedChanges ? 64 : 0);
+            GUI.Label(new Rect(r.x + 38, r.y + 6, labelWidth, 16), name, FigTheme.Bold);
+            GUI.Label(new Rect(r.x + 38, r.y + 22, labelWidth, 14), hasUnsavedChanges ? "Edited — not saved" : "Saved", FigTheme.Faint);
+            if (hasUnsavedChanges && GUI.Button(new Rect(r.xMax - 70, r.y + 11, 62, 20), new GUIContent("Discard", "Discard all unsaved edits and read the file again"), EditorStyles.miniButton))
+            {
+                Defer(DiscardChanges);
+            }
             FigTheme.Separator(new Rect(r.x, r.y + HeaderHeight + 4, r.width, 1));
 
             var body = new Rect(r.x, r.y + HeaderHeight + 5, r.width, r.height - HeaderHeight - 5);

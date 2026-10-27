@@ -10,8 +10,9 @@ Open via **Tools > Thinhnv > Fig Editor**, right-click a `.fig` asset > **Open i
 The window follows figcraft's (and Figma's) editor layout:
 
 - **Rail** (left edge): *Layers*, *Assets*, *File*.
-- **Left panel**: the file menu (open, recent, save, save as, reveal, close), the file name and its saved
-  state, then the panel the rail picked:
+- **Left panel**: the file menu (open, recent, save, save as, discard changes / reload, reveal), the
+  file name and its saved state with a *Discard* button while there are unsaved edits (it reads the file
+  from disk again and clears the history), then the panel the rail picked:
   - *Layers*: the pages, then the layer tree of the current page in Figma's order (topmost first),
     with type icons, hover eye / lock buttons, double-click or F2 to rename, arrow-key navigation and a
     right-click menu (rename, select, zoom to, order, duplicate, delete, copy GUID). Layers inside an
@@ -27,8 +28,11 @@ The window follows figcraft's (and Figma's) editor layout:
   - *Design*: the selection's header (instances link to their main component), alignment, position and
     rotation, size with ratio lock and *Clip content*, an auto layout summary, layer opacity, blend mode
     and corner radii, typography (text, font, size, line height, letter spacing, alignment, resizing),
-    fills and strokes (solid with hex and opacity, gradient stops, image scale mode; add, remove,
-    hide), stroke weight and alignment, effects with their parameters, and PNG export at 0.5×–4×.
+    fills and strokes (solid with hex and opacity, gradients with a swatch of their shape, image scale
+    mode; add, remove, hide), stroke weight and alignment, effects with their parameters, and PNG export at 0.5×–4×.
+    The chevron on a paint row opens its editor: the type (solid, linear, radial, angular, diamond)
+    and, for gradients, the ramp with draggable stops (click the ramp to add one), each stop's
+    position, colour with alpha and hex, *+ Stop*, *Flip* and *Rotate 90°*.
   - *Prototype*: the frame's interactions and the page's flows (read-only).
   - *Inspect*: every field of the layer as the file's schema defines it. Fields can be edited, removed
     or added, arrays can grow and shrink; colours, vectors and GUIDs get inline controls, byte arrays
@@ -67,8 +71,10 @@ The canvas is a software renderer (`FigRenderer`) that follows figcraft's render
 - Layer opacity and blend modes (normal, multiply, screen, darken, lighten, overlay) on isolated
   groups, frame clipping with rounded corners, masks, boolean layers from their outlines.
 - Text from Figma's laid-out glyph outlines (`derivedTextData`), so it looks the same as in Figma
-  without the fonts. Text without them (new or edited here) is drawn in an OS font close to the one
-  named.
+  without the fonts, with its fills (per-character ones too) and strokes (Figma's stroke outline, or
+  the glyphs outlined inside / centre / outside). Text on a path (`TEXT_PATH`) follows its path: the
+  path is read from the layer's vector network and each glyph is turned onto it, the way figcraft
+  places it. Text without glyphs (new or edited here) is drawn in an OS font close to the one named.
 - Instances are expanded the way figcraft expands them: override rows from `symbolOverrides` and
   `derivedSymbolData` matched by GUID path (with override-key aliases), component properties (text,
   visibility, instance swap), nested instances, and constraints when an instance is resized.
@@ -81,7 +87,14 @@ The canvas is a software renderer (`FigRenderer`) that follows figcraft's render
 - **Tiles** (`FigTileCache`): the canvas is cut into 256 px tiles rendered on worker threads from the
   immutable snapshot, nearest to the centre first. Only tiles under a dirty region are re-rendered;
   while zooming, the previous zoom's tiles are drawn scaled until the new ones are ready (requests wait
-  for the zoom to settle). Up to 600 tiles are kept, textures are pooled.
+  for the zoom to settle). Only the nearest coarser and finer zoom levels are drawn as stand-ins, work
+  queued for a zoom that was left is dropped, and uploads get a 4 ms budget per frame. Up to 600 tiles
+  are kept, textures are pooled.
+- **No garbage per tile**: render buffers, coverage masks, blur scratch and pixel arrays are pooled per
+  worker, so rendering doesn't trigger the collector pauses that stall the editor.
+- **Level of detail**: a layer smaller than a pixel is drawn as one blended dot, so zoomed out pages of
+  thousands of layers render in a few milliseconds per tile. Text drawn with OS fonts uses a few font
+  sizes scaled to fit, so zooming doesn't make Unity rasterize the font at every step.
 - **Lifted drag**: when a drag starts, the moved layers are rendered once into their own texture and
   the tiles beneath are rendered without them; during the drag only that texture moves. On release the
   file is updated, the tiles under the old and new place re-render, and the lifted copy stays until
@@ -111,6 +124,7 @@ zip members other than `canvas.fig` are kept byte for byte.
 | `FigScene.cs` | World-space scene snapshot of a page: instance expansion, paints, hit tests, copy-on-write refresh |
 | `FigPath.cs`, `FigPaint.cs` | Path blobs and shapes; paints, gradients, effects, decoded images |
 | `FigRaster.cs`, `FigRenderer.cs` | Coverage rasterizer, blur; the software renderer |
+| `FigTextPath.cs` | The path a text-on-path layer follows, from its vector network |
 | `FigTileCache.cs` | Threaded tile cache, lifted drag layer, image decoding |
 | `FigGeometry.cs` | Affine transforms and rectangle helpers |
 | `FigTheme.cs` | Colours, styles and the vector icons |
@@ -133,6 +147,8 @@ MIT / Apache-2.0).
 - Background blur only sees what lies within a tile's margin, so very large background blurs can show
   tile seams.
 - Layers inside instances are read-only; edit the main component.
+- Text on a path is drawn from Figma's glyphs; editing its text draws it straight (in an OS font) until
+  Figma lays it out on the path again.
 - Resizing on the canvas drops the layer's cached `fillGeometry` / `strokeGeometry` (Figma rebuilds them
   from the size); vectors, booleans and groups can be moved but not resized there. Resizing text switches
   it to auto height with a fixed width (fixed size when the height changed) so Figma keeps the new box.

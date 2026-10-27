@@ -71,6 +71,7 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             textures.Clear();
+            ClearGradientPreviews();
             if (thumbnailTexture != null)
             {
                 DestroyImmediate(thumbnailTexture);

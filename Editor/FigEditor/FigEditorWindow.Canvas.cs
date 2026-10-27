@@ -2179,18 +2179,42 @@ namespace Thinhnv.UnityTools.FigEditor
                     continue;
                 }
 
+                // Draw at one of a few font sizes and scale to the exact one: every new size makes Unity
+                // rasterize the font again, which would happen on nearly every frame of a zoom.
+                int quantized = QuantizedFontSize(size);
+                float k = size / quantized;
                 GUI.BeginGroup(clip);
-                GUI.Label(new Rect(r.x - clip.x, r.y - clip.y, r.width, r.height), n.Text, TextStyleFor(n, false));
+                Matrix4x4 matrix = GUI.matrix;
+                var origin = new Vector2(r.x - clip.x, r.y - clip.y);
+                if (!Mathf.Approximately(k, 1f))
+                {
+                    GUIUtility.ScaleAroundPivot(new Vector2(k, k), origin);
+                }
+
+                GUI.Label(new Rect(origin.x, origin.y, r.width / k, r.height / k), n.Text, TextStyleFor(n, false, quantized));
+                GUI.matrix = matrix;
                 GUI.EndGroup();
             }
         }
 
-        private GUIStyle TextStyleFor(FigSceneNode n, bool editing)
+        /// <summary>Font sizes up to 16 px as they are; above, six steps per doubling.</summary>
+        private static int QuantizedFontSize(float size)
+        {
+            if (size <= 16f)
+            {
+                return Mathf.Clamp(Mathf.RoundToInt(size), 1, 16);
+            }
+
+            float steps = Mathf.Round(Mathf.Log(size, 2f) * 6f) / 6f;
+            return Mathf.Clamp(Mathf.RoundToInt(Mathf.Pow(2f, steps)), 1, 300);
+        }
+
+        private GUIStyle TextStyleFor(FigSceneNode n, bool editing, int fontSize = 0)
         {
             overlayText ??= new GUIStyle(EditorStyles.label) { richText = false, padding = new RectOffset(0, 0, 0, 0), margin = new RectOffset(0, 0, 0, 0) };
             var style = editing ? new GUIStyle(overlayText) : overlayText;
             style.font = OsFont(n.FontFamily);
-            style.fontSize = Mathf.Clamp(Mathf.RoundToInt(n.FontSize * n.World.Scale * viewScale), 1, 300);
+            style.fontSize = fontSize > 0 ? fontSize : Mathf.Clamp(Mathf.RoundToInt(n.FontSize * n.World.Scale * viewScale), 1, 300);
             string fs = n.FontStyle ?? "";
             bool bold = fs.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0 || fs.IndexOf("Black", StringComparison.OrdinalIgnoreCase) >= 0 || fs.IndexOf("Semi", StringComparison.OrdinalIgnoreCase) >= 0;
             bool italic = fs.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0;

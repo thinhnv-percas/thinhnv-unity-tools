@@ -28,22 +28,65 @@ namespace Thinhnv.UnityTools.FigEditor
         private float scale;
         private HashSet<int> excluded;
         private readonly List<Vector2[]> contours = new();
-        private readonly Stack<FigMask> maskPool = new();
-        private int maskW = -1, maskH = -1;
+        private const int MaxPooledFloats = 3 << 20;
+        private const int MaxPooledMaskBytes = 6 << 20;
+
+        // Tiles render the same few buffer sizes over and over: reuse them instead of feeding the
+        // garbage collector a megabyte or more per tile (its pauses stall the editor while zooming).
+        private readonly Dictionary<int, Stack<float[]>> floatPool = new();
+        private readonly Dictionary<long, Stack<FigMask>> maskPool = new();
+        private int pooledFloats;
+        private int pooledMaskBytes;
 
         private sealed class Canvas
         {
             public int OX, OY, W, H;
             public float[] P;
+        }
 
-            public Canvas(int ox, int oy, int w, int h)
+        private Canvas NewCanvas(int ox, int oy, int w, int h)
+        {
+            return new Canvas { OX = ox, OY = oy, W = w, H = h, P = RentFloats(w * h * 4, true) };
+        }
+
+        private void Free(Canvas c)
+        {
+            ReturnFloats(c.P);
+            c.P = null;
+        }
+
+        /// <summary>A float array of exactly <paramref name="n"/> elements, zeroed when <paramref name="clear"/>.</summary>
+        private float[] RentFloats(int n, bool clear)
+        {
+            if (floatPool.TryGetValue(n, out Stack<float[]> stack) && stack.Count > 0)
             {
-                OX = ox;
-                OY = oy;
-                W = w;
-                H = h;
-                P = new float[w * h * 4];
+                float[] a = stack.Pop();
+                pooledFloats -= n;
+                if (clear)
+                {
+                    Array.Clear(a, 0, n);
+                }
+
+                return a;
             }
+
+            return new float[n];
+        }
+
+        private void ReturnFloats(float[] a)
+        {
+            if (a == null || pooledFloats + a.Length > MaxPooledFloats)
+            {
+                return;
+            }
+
+            if (!floatPool.TryGetValue(a.Length, out Stack<float[]> stack))
+            {
+                floatPool[a.Length] = stack = new Stack<float[]>();
+            }
+
+            stack.Push(a);
+            pooledFloats += a.Length;
         }
 
         /// <summary>
@@ -52,14 +95,15 @@ namespace Thinhnv.UnityTools.FigEditor
         /// <paramref name="apron"/> renders that many extra pixels around it (for background blur near the edges);
         /// <paramref name="exclude"/> skips those subtrees (the selection being dragged).
         /// </summary>
-        public Color32[] Render(FigSceneNode[] nodes, Color background, float zoom, int x, int y, int w, int h, int apron = 0, HashSet<int> exclude = null)
+        public Color32[] Render(FigSceneNode[] nodes, Color background, float zoom, int x, int y, int w, int h, int apron = 0, HashSet<int> exclude = null,
+            Color32[] into = null, bool bottomUp = false)
         {
             scale = zoom;
             excluded = exclude;
             Missing.Clear();
-            var canvas = new Canvas(x - apron, y - apron, w + 2 * apron, h + 2 * apron);
+            Canvas canvas = NewCanvas(x - apron, y - apron, w + 2 * apron, h + 2 * apron);
             float[] p = canvas.P;
-            for (int i = 0; i < p.Length; i += 4)
+            for (int i = 0; i < canvas.W * canvas.H * 4; i += 4)
             {
                 p[i] = background.r;
                 p[i + 1] = background.g;
@@ -68,11 +112,12 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             DrawRange(nodes, 0, nodes.Length, canvas, null);
-            var output = new Color32[w * h];
+            Color32[] output = into != null && into.Length == w * h ? into : new Color32[w * h];
             for (int row = 0; row < h; row++)
             {
                 int src = ((row + apron) * canvas.W + apron) * 4;
-                int dst = row * w;
+                // Textures store rows bottom-up.
+                int dst = (bottomUp ? h - 1 - row : row) * w;
                 for (int col = 0; col < w; col++, src += 4)
                 {
                     float a = p[src + 3];
@@ -82,6 +127,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
+            Free(canvas);
             return output;
         }
 
@@ -91,7 +137,7 @@ namespace Thinhnv.UnityTools.FigEditor
             scale = zoom;
             excluded = null;
             Missing.Clear();
-            var canvas = new Canvas(x, y, w, h);
+            Canvas canvas = NewCanvas(x, y, w, h);
             foreach (int r in roots)
             {
                 DrawRange(nodes, r, nodes[r].SubtreeEnd, canvas, null);
@@ -105,6 +151,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 output[i] = a <= 0 ? new Color32(0, 0, 0, 0) : new Color32(ToByte(p[j] / a), ToByte(p[j + 1] / a), ToByte(p[j + 2] / a), ToByte(a));
             }
 
+            Free(canvas);
             return output;
         }
 
@@ -124,6 +171,11 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 FigSceneNode n = nodes[i];
                 if (!Overlaps(n.SubtreeBounds, c) || (excluded != null && excluded.Contains(i)))
+                {
+                    continue;
+                }
+
+                if (!n.IsMask && DrawAsDot(n, c, maskClip ?? clip))
                 {
                     continue;
                 }
@@ -161,6 +213,70 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 Release(maskClip);
             }
+        }
+
+        /// <summary>
+        /// Level of detail: a layer (with its subtree) smaller than a pixel is one blended dot of its
+        /// first fill, weighted by the area it covers — zoomed out, a page of thousands of tiny layers
+        /// costs about as much as a page of rectangles.
+        /// </summary>
+        private bool DrawAsDot(FigSceneNode n, Canvas c, FigMask clip)
+        {
+            Rect b = n.SubtreeBounds;
+            float pw = b.width * scale, ph = b.height * scale;
+            if (pw >= 1f || ph >= 1f || n.NeedsIsolation)
+            {
+                return false;
+            }
+
+            List<FigPaint> fills = n.Fills ?? n.Strokes;
+            if (fills == null || fills.Count == 0 || (n.FillPaths == null && n.Glyphs == null && n.StrokePaths == null))
+            {
+                // Nothing of its own to stand for the subtree: draw it normally (its children are dots too).
+                return false;
+            }
+
+            int px = (int)Math.Floor(b.center.x * scale) - c.OX, py = (int)Math.Floor(b.center.y * scale) - c.OY;
+            if (px < 0 || py < 0 || px >= c.W || py >= c.H)
+            {
+                return true;
+            }
+
+            FigPaint paint = fills[fills.Count - 1];
+            float r, g, bl, a;
+            if (paint.Kind == FigPaintKind.Solid)
+            {
+                r = paint.Color.r * paint.Color.a;
+                g = paint.Color.g * paint.Color.a;
+                bl = paint.Color.b * paint.Color.a;
+                a = paint.Color.a;
+            }
+            else if (paint.Lut != null)
+            {
+                r = paint.Lut[128 * 4];
+                g = paint.Lut[128 * 4 + 1];
+                bl = paint.Lut[128 * 4 + 2];
+                a = paint.Lut[128 * 4 + 3];
+            }
+            else
+            {
+                r = g = bl = 0.6f * paint.Opacity;
+                a = paint.Opacity;
+            }
+
+            // Text covers roughly a third of its box with ink.
+            float k = Mathf.Max(0.05f, pw * ph) * (n.Glyphs != null ? 0.35f : 1f) * n.Opacity;
+            if (clip != null)
+            {
+                k *= ClipAt(clip, px, py) / 255f;
+            }
+
+            if (k > 0.0005f)
+            {
+                Blend(c.P, (py * c.W + px) * 4, r * k, g * k, bl * k, a * k, FigBlend.Normal);
+            }
+
+            return true;
         }
 
         private bool Overlaps(Rect world, Canvas c)
@@ -251,9 +367,10 @@ namespace Thinhnv.UnityTools.FigEditor
 
         private void DrawChildrenWithOpacity(FigSceneNode[] nodes, FigSceneNode n, Canvas c, FigMask clip, float opacity)
         {
-            var temp = new Canvas(c.OX, c.OY, c.W, c.H);
+            Canvas temp = NewCanvas(c.OX, c.OY, c.W, c.H);
             DrawRange(nodes, n.Index + 1, n.SubtreeEnd, temp, clip);
             Blit(temp, c, null, opacity, FigBlend.Normal);
+            Free(temp);
         }
 
         private void DrawStrokes(FigSceneNode n, Canvas c, FigMask clip, float opacity)
@@ -268,18 +385,44 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 cov = Coverage(n.StrokePaths, n.World, c);
             }
-            else if (n.StrokeFromOutline && n.FillPaths != null)
+            else if (n.StrokeFromOutline && (n.FillPaths != null || n.Glyphs != null))
             {
                 cov = GetMask(c);
                 FigAffine toPixels = ToPixels(n.World, c);
                 contours.Clear();
-                foreach (FigPath path in n.FillPaths)
+                List<FigPath> shape = n.FillPaths;
+                if (shape == null)
+                {
+                    shape = new List<FigPath>(n.Glyphs.Count);
+                    foreach (FigGlyphRun run in n.Glyphs)
+                    {
+                        shape.Add(run.Path);
+                    }
+                }
+
+                foreach (FigPath path in shape)
                 {
                     path.Flatten(toPixels, Tolerance, contours);
                 }
 
-                float width = Mathf.Max(0.5f, n.StrokeWeight * n.World.Scale * scale);
+                // Inside / outside: a ring twice as wide, cut to the inside or outside of the shape.
+                bool sided = n.StrokeAlign == "INSIDE" || n.StrokeAlign == "OUTSIDE";
+                float width = Mathf.Max(0.5f, n.StrokeWeight * n.World.Scale * scale * (sided ? 2f : 1f));
                 FigRaster.Fill(FigRaster.Stroke(contours, width), false, cov);
+                if (sided)
+                {
+                    FigMask inside = Coverage(shape, n.World, c);
+                    if (n.StrokeAlign == "INSIDE")
+                    {
+                        cov.MultiplyBy(inside);
+                    }
+                    else
+                    {
+                        cov.MultiplyByInverse(inside);
+                    }
+
+                    Release(inside);
+                }
             }
             else
             {
@@ -324,14 +467,13 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
-            var layer = new Canvas(x0, y0, x1 - x0, y1 - y0);
-            SwapMaskSize(layer);
+            Canvas layer = NewCanvas(x0, y0, x1 - x0, y1 - y0);
             DrawNode(nodes, n, layer, null, 1f);
 
             float[] alpha = null;
             if (n.Effects != null)
             {
-                alpha = new float[layer.W * layer.H];
+                alpha = RentFloats(layer.W * layer.H, false);
                 for (int i = 0; i < alpha.Length; i++)
                 {
                     alpha[i] = layer.P[i * 4 + 3];
@@ -372,14 +514,15 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            SwapMaskSize(c);
             Blit(layer, c, clip, n.Opacity, n.Blend);
+            ReturnFloats(alpha);
+            Free(layer);
         }
 
         private void DrawShadow(Canvas c, Canvas layer, float[] alpha, FigMask clip, FigEffect e, FigSceneNode n, float opacity)
         {
             int w = layer.W, h = layer.H;
-            var a = new float[w * h];
+            float[] a = RentFloats(w * h, true);
             Vector2 offset = n.World.ApplyVector(e.Offset) * scale;
             int dx = Mathf.RoundToInt(offset.x), dy = Mathf.RoundToInt(offset.y);
             for (int y = 0; y < h; y++)
@@ -449,12 +592,14 @@ namespace Thinhnv.UnityTools.FigEditor
                     c.P[ci + 3] = k + c.P[ci + 3] * inv;
                 }
             }
+
+            ReturnFloats(a);
         }
 
         private void InnerShadow(Canvas layer, float[] alpha, FigEffect e, FigSceneNode n)
         {
             int w = layer.W, h = layer.H;
-            var a = new float[w * h];
+            float[] a = RentFloats(w * h, false);
             Vector2 offset = n.World.ApplyVector(e.Offset) * scale;
             int dx = Mathf.RoundToInt(offset.x), dy = Mathf.RoundToInt(offset.y);
             for (int y = 0; y < h; y++)
@@ -491,6 +636,8 @@ namespace Thinhnv.UnityTools.FigEditor
                 layer.P[pi + 2] = col.b * k * alpha[i] + layer.P[pi + 2] * inv;
                 layer.P[pi + 3] = Mathf.Max(layer.P[pi + 3], k * alpha[i]);
             }
+
+            ReturnFloats(a);
         }
 
         private void BackgroundBlur(Canvas c, Canvas layer, float[] alpha, FigMask clip, float sigma)
@@ -504,7 +651,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
-            var region = new float[w * h * 4];
+            float[] region = RentFloats(w * h * 4, false);
             for (int y = 0; y < h; y++)
             {
                 Array.Copy(c.P, ((y0 - c.OY + y) * c.W + (x0 - c.OX)) * 4, region, y * w * 4, w * 4);
@@ -534,6 +681,8 @@ namespace Thinhnv.UnityTools.FigEditor
                     }
                 }
             }
+
+            ReturnFloats(region);
         }
 
         /// <summary>Composite an isolated layer canvas onto <paramref name="dst"/>.</summary>
@@ -602,31 +751,36 @@ namespace Thinhnv.UnityTools.FigEditor
             return mask;
         }
 
-        private void SwapMaskSize(Canvas c)
-        {
-            if (c.W != maskW || c.H != maskH)
-            {
-                maskPool.Clear();
-                maskW = c.W;
-                maskH = c.H;
-            }
-        }
-
         private FigMask GetMask(Canvas c)
         {
-            SwapMaskSize(c);
-            return maskPool.Count > 0 ? maskPool.Pop() : new FigMask(c.W, c.H);
+            long key = (long)c.W << 32 | (uint)c.H;
+            if (maskPool.TryGetValue(key, out Stack<FigMask> stack) && stack.Count > 0)
+            {
+                FigMask m = stack.Pop();
+                pooledMaskBytes -= m.Width * m.Height + m.Height * 8;
+                return m;
+            }
+
+            return new FigMask(c.W, c.H);
         }
 
         private void Release(FigMask m)
         {
-            if (m.Width != maskW || m.Height != maskH)
+            int bytes = m.Width * m.Height + m.Height * 8;
+            if (pooledMaskBytes + bytes > MaxPooledMaskBytes)
             {
                 return;
             }
 
+            long key = (long)m.Width << 32 | (uint)m.Height;
+            if (!maskPool.TryGetValue(key, out Stack<FigMask> stack))
+            {
+                maskPool[key] = stack = new Stack<FigMask>();
+            }
+
             m.Clear();
-            maskPool.Push(m);
+            stack.Push(m);
+            pooledMaskBytes += bytes;
         }
 
         // ─── Paint ───────────────────────────────────────────────────────────────

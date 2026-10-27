@@ -857,6 +857,7 @@ namespace Thinhnv.UnityTools.FigEditor
                     break;
                 case "LINE":
                 case "TEXT":
+                case "TEXT_PATH":
                 case "GROUP":
                     break;
                 default:
@@ -864,7 +865,10 @@ namespace Thinhnv.UnityTools.FigEditor
                     break;
             }
 
+            ResolveText(node, v);
+
             // Strokes: the file's outline when it has one, else outlined here.
+            bool text = IsText(type);
             node.StrokeWeight = Mathf.Max(0, v.Float("strokeWeight", 1f));
             node.StrokeAlign = v.EnumName("strokeAlign") ?? (type == "LINE" || type == "VECTOR" ? "CENTER" : "INSIDE");
             node.StrokePaths = null;
@@ -872,9 +876,15 @@ namespace Thinhnv.UnityTools.FigEditor
             if (node.Strokes != null && (node.StrokeWeight > 0 || v.Bool("borderStrokeWeightsIndependent", false)))
             {
                 List<FigPath> outline = GeometryPaths(v.List("strokeGeometry"));
-                if (outline != null && type != "TEXT")
+                if (outline != null && (!text || node.Glyphs != null))
                 {
+                    // Text: only while its cached glyphs are current (the outline is made from them).
                     node.StrokePaths = outline;
+                }
+                else if (text)
+                {
+                    // Outline the glyphs at draw time.
+                    node.StrokeFromOutline = node.Glyphs != null;
                 }
                 else if (box != null)
                 {
@@ -892,7 +902,6 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            ResolveText(node, v);
             ComputePaintBounds(node);
         }
 
@@ -1002,7 +1011,7 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             node.Glyphs = null;
             node.FallbackText = false;
-            if (node.Type != "TEXT")
+            if (!IsText(node.Type))
             {
                 return;
             }
@@ -1070,7 +1079,8 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             float sign = sumY > 0 ? -1f : 1f;
-            var runs = new Dictionary<uint, List<FigPath>>();
+            var placed = new FigPath[glyphs.Count];
+            var origins = new Vector2[glyphs.Count];
             for (int i = 0; i < glyphs.Count; i++)
             {
                 FigPath path = outlines[i];
@@ -1082,14 +1092,30 @@ namespace Thinhnv.UnityTools.FigEditor
                 KiwiValue g = glyphs[i];
                 float size = g.Get("fontSize")?.AsFloat ?? node.FontSize;
                 KiwiValue pos = g.Get("position");
-                var t = new FigAffine { A = size, E = sign * size, C = pos?.Get("x")?.AsFloat ?? 0, F = pos?.Get("y")?.AsFloat ?? 0 };
-                uint style = (uint)(g.Get("styleID")?.Uint ?? 0);
+                origins[i] = new Vector2(pos?.Get("x")?.AsFloat ?? 0, pos?.Get("y")?.AsFloat ?? 0);
+                placed[i] = path.Transformed(new FigAffine { A = size, E = sign * size, C = origins[i].x, F = origins[i].y });
+            }
+
+            if (node.Type == "TEXT_PATH")
+            {
+                PlaceOnPath(node, v, placed, origins);
+            }
+
+            var runs = new Dictionary<uint, List<FigPath>>();
+            for (int i = 0; i < glyphs.Count; i++)
+            {
+                if (placed[i] == null)
+                {
+                    continue;
+                }
+
+                uint style = (uint)(glyphs[i].Get("styleID")?.Uint ?? 0);
                 if (!runs.TryGetValue(style, out List<FigPath> list))
                 {
                     runs[style] = list = new List<FigPath>();
                 }
 
-                list.Add(path.Transformed(t));
+                list.Add(placed[i]);
             }
 
             node.Glyphs = new List<FigGlyphRun>();
@@ -1103,6 +1129,108 @@ namespace Thinhnv.UnityTools.FigEditor
 
                 node.Glyphs.Add(new FigGlyphRun { Path = FigPath.Concat(run.Value, false), Fills = fills });
             }
+        }
+
+        public static bool IsText(string type) => type == "TEXT" || type == "TEXT_PATH";
+
+        /// <summary>
+        /// Text on a path: turn each glyph onto the layer's path like figcraft does (its baseline on the
+        /// path where its centre falls). When the cached glyphs already follow the path (their baselines
+        /// differ), only turn each one to the path's direction under it.
+        /// </summary>
+        private void PlaceOnPath(FigSceneNode node, FigView v, FigPath[] placed, Vector2[] origins)
+        {
+            FigTextPath path = ReadTextPath(node, v);
+            if (path == null)
+            {
+                return;
+            }
+
+            float minY = float.MaxValue, maxY = float.MinValue, width = 0;
+            int first = -1;
+            for (int i = 0; i < placed.Length; i++)
+            {
+                if (placed[i] == null)
+                {
+                    continue;
+                }
+
+                first = first < 0 ? i : first;
+                minY = Mathf.Min(minY, origins[i].y);
+                maxY = Mathf.Max(maxY, origins[i].y);
+                width = Mathf.Max(width, placed[i].Bounds.xMax);
+            }
+
+            if (first < 0)
+            {
+                return;
+            }
+
+            bool alreadyOnPath = maxY - minY > 0.5f;
+            float shift = node.TextAlignH == "CENTER" ? width / 2f : node.TextAlignH == "RIGHT" ? width : 0f;
+            float origin = path.Start * path.Length - shift;
+            float baseline = origins[first].y;
+            for (int i = 0; i < placed.Length; i++)
+            {
+                if (placed[i] == null)
+                {
+                    continue;
+                }
+
+                FigAffine m;
+                if (alreadyOnPath)
+                {
+                    Vector2 dir = path.DirectionNear(origins[i], out float distance);
+                    m = Rotation(origins[i], origins[i], dir);
+                }
+                else
+                {
+                    float x = placed[i].Bounds.center.x, y = origins[i].y;
+                    if (!path.At(origin + x, out Vector2 p, out Vector2 dir))
+                    {
+                        // Past an open path's end: hidden, like figcraft.
+                        placed[i] = null;
+                        continue;
+                    }
+
+                    Vector2 below = new Vector2(-dir.y, dir.x) * (y - baseline);
+                    m = Rotation(p + below, new Vector2(x, y), dir);
+                }
+
+                placed[i] = placed[i].Transformed(m);
+            }
+        }
+
+        /// <summary>Move <paramref name="from"/> to <paramref name="to"/>, turned to <paramref name="dir"/>.</summary>
+        private static FigAffine Rotation(Vector2 to, Vector2 from, Vector2 dir)
+        {
+            float c = dir.x, s = dir.y;
+            return new FigAffine
+            {
+                A = c,
+                B = -s,
+                C = to.x - (c * from.x - s * from.y),
+                D = s,
+                E = c,
+                F = to.y - (s * from.x + c * from.y),
+            };
+        }
+
+        private FigTextPath ReadTextPath(FigSceneNode node, FigView v)
+        {
+            KiwiValue start = v.Get("textPathStart");
+            KiwiValue data = v.Get("vectorData");
+            KiwiValue blobIndex = data?.Get("vectorNetworkBlob");
+            if (start == null || blobIndex == null || blobs == null || blobIndex.Uint >= (ulong)blobs.Count)
+            {
+                return null;
+            }
+
+            float nx = data.Path("normalizedSize.x")?.AsFloat ?? node.Width;
+            float ny = data.Path("normalizedSize.y")?.AsFloat ?? node.Height;
+            float sx = nx > 1e-6f ? node.Width / nx : 1f, sy = ny > 1e-6f ? node.Height / ny : 1f;
+            return FigTextPath.FromNetwork(blobs[(int)blobIndex.Uint].Get("bytes")?.Bytes, sx, sy,
+                start.Get("tValue")?.AsFloat ?? 0f, start.Get("forward")?.AsBool ?? true);
         }
 
         private static void ComputePaintBounds(FigSceneNode node)

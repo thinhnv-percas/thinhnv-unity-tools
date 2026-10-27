@@ -109,6 +109,21 @@ namespace Thinhnv.UnityTools.FigEditor
             YMax = other.YMax;
         }
 
+        /// <summary>this = this × (1 − other) (what lies outside the other coverage).</summary>
+        public void MultiplyByInverse(FigMask other)
+        {
+            for (int y = Math.Max(0, YMin); y <= Math.Min(Height - 1, YMax); y++)
+            {
+                int x0 = Math.Max(RowMin[y], other.RowMin[y]), x1 = Math.Min(RowMax[y], other.RowMax[y]);
+                int row = y * Width;
+                for (int x = x0; x <= x1; x++)
+                {
+                    int i = row + x;
+                    A[i] = (byte)((A[i] * (255 - other.A[i]) + 127) / 255);
+                }
+            }
+        }
+
         /// <summary>this = this × other (intersection of coverages).</summary>
         public void MultiplyBy(FigMask other)
         {
@@ -467,7 +482,7 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             int[] boxes = BoxesForGauss(sigma);
-            var tmp = new float[data.Length];
+            float[] tmp = ScratchBuffer(ref blurScratch, width * height * channels);
             foreach (int r in boxes)
             {
                 if (r <= 0)
@@ -512,40 +527,64 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
+        /// <summary>Vertical box pass, row by row (a running sum per column) so memory is read in order.</summary>
         private static void BoxV(float[] src, float[] dst, int w, int h, int ch, int r)
         {
             float inv = 1f / (r + r + 1);
             int stride = w * ch;
-            for (int x = 0; x < w; x++)
+            float[] acc = ScratchBuffer(ref columnScratch, stride);
+            Array.Clear(acc, 0, stride);
+            for (int y = 0; y <= Math.Min(r, h - 1); y++)
             {
-                for (int c = 0; c < ch; c++)
+                int row = y * stride;
+                for (int i = 0; i < stride; i++)
                 {
-                    int col = x * ch + c;
-                    float acc = 0;
-                    for (int y = -r; y <= r; y++)
+                    acc[i] += src[row + i];
+                }
+            }
+
+            for (int y = 0; y < h; y++)
+            {
+                int row = y * stride;
+                for (int i = 0; i < stride; i++)
+                {
+                    dst[row + i] = acc[i] * inv;
+                }
+
+                int add = y + r + 1, sub = y - r;
+                if (add < h)
+                {
+                    int ar = add * stride;
+                    for (int i = 0; i < stride; i++)
                     {
-                        if (y >= 0 && y < h)
-                        {
-                            acc += src[y * stride + col];
-                        }
+                        acc[i] += src[ar + i];
                     }
+                }
 
-                    for (int y = 0; y < h; y++)
+                if (sub >= 0)
+                {
+                    int sr = sub * stride;
+                    for (int i = 0; i < stride; i++)
                     {
-                        dst[y * stride + col] = acc * inv;
-                        int add = y + r + 1, sub = y - r;
-                        if (add < h)
-                        {
-                            acc += src[add * stride + col];
-                        }
-
-                        if (sub >= 0)
-                        {
-                            acc -= src[sub * stride + col];
-                        }
+                        acc[i] -= src[sr + i];
                     }
                 }
             }
+        }
+
+        [ThreadStatic] private static float[] blurScratch;
+        [ThreadStatic] private static float[] columnScratch;
+        [ThreadStatic] private static float[] spreadScratch;
+
+        /// <summary>A per-thread buffer of at least <paramref name="n"/> floats (contents undefined).</summary>
+        private static float[] ScratchBuffer(ref float[] buffer, int n)
+        {
+            if (buffer == null || buffer.Length < n)
+            {
+                buffer = new float[Math.Max(n, buffer == null ? 0 : buffer.Length * 3 / 2)];
+            }
+
+            return buffer;
         }
 
         /// <summary>Grow (r &gt; 0) or shrink (r &lt; 0) an alpha field by |r| pixels with a separable max / min filter.</summary>
@@ -558,7 +597,7 @@ namespace Thinhnv.UnityTools.FigEditor
 
             bool grow = r > 0;
             r = Math.Abs(r);
-            var tmp = new float[alpha.Length];
+            float[] tmp = ScratchBuffer(ref spreadScratch, width * height);
             for (int y = 0; y < height; y++)
             {
                 for (int x = 0; x < width; x++)

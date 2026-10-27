@@ -153,6 +153,20 @@ namespace Thinhnv.UnityTools.FigEditor
             return false;
         }
 
+        /// <summary>A one-pixel frame around <paramref name="r"/>.</summary>
+        public static void Outline(Rect r, Color c)
+        {
+            if (Event.current.type != EventType.Repaint)
+            {
+                return;
+            }
+
+            EditorGUI.DrawRect(new Rect(r.x, r.y, r.width, 1), c);
+            EditorGUI.DrawRect(new Rect(r.x, r.yMax - 1, r.width, 1), c);
+            EditorGUI.DrawRect(new Rect(r.x, r.y, 1, r.height), c);
+            EditorGUI.DrawRect(new Rect(r.xMax - 1, r.y, 1, r.height), c);
+        }
+
         public static void Separator(Rect r)
         {
             EditorGUI.DrawRect(r, Border);
@@ -581,6 +595,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 case "SECTION":
                     return "section";
                 case "TEXT":
+                case "TEXT_PATH":
                     return "text";
                 case "RECTANGLE":
                 case "ROUNDED_RECTANGLE":

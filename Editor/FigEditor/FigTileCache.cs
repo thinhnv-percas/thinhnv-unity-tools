@@ -23,7 +23,8 @@ namespace Thinhnv.UnityTools.FigEditor
     {
         public const int TileSize = 256;
         private const int MaxTiles = 600;
-        private const int UploadsPerFrame = 12;
+        private const int MaxUploadsPerFrame = 16;
+        private const double UploadBudgetMs = 4.0;
         private const double ZoomSettleSeconds = 0.12;
         private const int ImageDecodesPerFrame = 2;
 
@@ -85,6 +86,7 @@ namespace Thinhnv.UnityTools.FigEditor
         private float settledScale = -1f;
         private double scaleChangedAt;
         private readonly Stack<Texture2D> texturePool = new();
+        private readonly Stack<Color32[]> pixelPool = new();
 
         /// <summary>Decoded images by hash; replaced (copy-on-write) whenever one is added, so workers read it lock-free.</summary>
         private volatile Dictionary<string, FigImageData> images = new();
@@ -203,6 +205,27 @@ namespace Thinhnv.UnityTools.FigEditor
 
         private static Rect Grow(Rect r, float d) => Rect.MinMaxRect(r.xMin - d, r.yMin - d, r.xMax + d, r.yMax + d);
 
+        /// <summary>Drop queued tile jobs of every zoom but <paramref name="zoomKey"/> (lift jobs stay).</summary>
+        private void CancelQueuedExcept(int zoomKey)
+        {
+            lock (sync)
+            {
+                for (int i = queue.Count - 1; i >= 0; i--)
+                {
+                    Job j = queue[i];
+                    if (j.Only == null && j.Key.Zoom != zoomKey)
+                    {
+                        if (tiles.TryGetValue(j.Key, out Tile t))
+                        {
+                            t.Queued = false;
+                        }
+
+                        queue.RemoveAt(i);
+                    }
+                }
+            }
+        }
+
         private void CancelQueued()
         {
             lock (sync)
@@ -243,21 +266,57 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             bool settled = now - scaleChangedAt >= ZoomSettleSeconds || settledScale < 0;
-            if (settled)
+            if (settled && !Mathf.Approximately(settledScale, scale))
+            {
+                settledScale = scale;
+                // Work queued for the zoom we left is wasted now: let the workers start on this one.
+                CancelQueuedExcept(ZoomKey(scale));
+            }
+            else if (settled)
             {
                 settledScale = scale;
             }
 
             EditorGUI.DrawRect(new Rect(0, 0, size.x, size.y), scene.Background);
 
-            // Tiles of an older zoom first (scaled), so the screen is never empty while zooming.
+            // Tiles of other zooms first (scaled), so the screen is never empty while zooming: only the
+            // nearest coarser and the nearest finer level, coarser underneath, instead of every level kept.
             int layer = exclude != null && exclude.Count > 0 ? 1 : 0;
             int zoomKey = ZoomKey(settledScale);
+            float coarser = -1f, finer = float.MaxValue;
             foreach (KeyValuePair<Key, Tile> pair in tiles)
             {
-                if (pair.Value.Texture != null && pair.Key.Layer == 0 && pair.Key.Zoom != zoomKey)
+                if (pair.Value.Texture == null || pair.Key.Layer != 0 || pair.Key.Zoom == zoomKey)
                 {
-                    DrawTile(pair.Key, pair.Value, scale, offset, size);
+                    continue;
+                }
+
+                float ts = pair.Value.Scale;
+                if (ts <= scale && ts > coarser)
+                {
+                    coarser = ts;
+                }
+                else if (ts > scale && ts < finer)
+                {
+                    finer = ts;
+                }
+            }
+
+            for (int pass = 0; pass < 2; pass++)
+            {
+                float want = pass == 0 ? coarser : finer;
+                if (want < 0 || want == float.MaxValue)
+                {
+                    continue;
+                }
+
+                int wantKey = ZoomKey(want);
+                foreach (KeyValuePair<Key, Tile> pair in tiles)
+                {
+                    if (pair.Key.Zoom == wantKey && pair.Key.Layer == 0 && pair.Value.Texture != null)
+                    {
+                        DrawTile(pair.Key, pair.Value, scale, offset, size);
+                    }
                 }
             }
 
@@ -373,7 +432,8 @@ namespace Thinhnv.UnityTools.FigEditor
         private bool Pump()
         {
             bool any = false;
-            for (int n = 0; n < UploadsPerFrame; n++)
+            var budget = System.Diagnostics.Stopwatch.StartNew();
+            for (int n = 0; n < MaxUploadsPerFrame && (n == 0 || budget.Elapsed.TotalMilliseconds < UploadBudgetMs); n++)
             {
                 Job job;
                 lock (sync)
@@ -395,6 +455,7 @@ namespace Thinhnv.UnityTools.FigEditor
 
                 if (!tiles.TryGetValue(job.Key, out Tile t) || t.Generation != job.Generation)
                 {
+                    ReturnPixels(job.Pixels);
                     continue;
                 }
 
@@ -406,6 +467,8 @@ namespace Thinhnv.UnityTools.FigEditor
 
                 t.Texture.SetPixels32(job.Pixels);
                 t.Texture.Apply(false, false);
+                ReturnPixels(job.Pixels);
+                job.Pixels = null;
                 t.Version = job.Version;
                 t.Stale = job.Version != Scene?.Version;
                 t.MissingImages = job.Missing != null && job.Missing.Length > 0 ? new HashSet<string>(job.Missing) : null;
@@ -558,6 +621,30 @@ namespace Thinhnv.UnityTools.FigEditor
 
         // ─── Workers ─────────────────────────────────────────────────────────────
 
+        private Color32[] RentPixels(int n)
+        {
+            lock (pixelPool)
+            {
+                if (pixelPool.Count > 0 && pixelPool.Peek().Length == n)
+                {
+                    return pixelPool.Pop();
+                }
+            }
+
+            return new Color32[n];
+        }
+
+        private void ReturnPixels(Color32[] pixels)
+        {
+            lock (pixelPool)
+            {
+                if (pixels != null && pixelPool.Count < 16 && pixels.Length == TileSize * TileSize)
+                {
+                    pixelPool.Push(pixels);
+                }
+            }
+        }
+
         private void Work()
         {
             var renderer = new FigRenderer();
@@ -598,17 +685,24 @@ namespace Thinhnv.UnityTools.FigEditor
 
                 try
                 {
-                    Color32[] topDown = job.Only != null
-                        ? renderer.RenderOnly(job.Nodes, job.Only, job.Scale, job.X, job.Y, job.W, job.H)
-                        : renderer.Render(job.Nodes, job.Background, job.Scale, job.X, job.Y, job.W, job.H, job.Apron, job.Exclude);
-                    // Textures store rows bottom-up.
-                    var pixels = new Color32[topDown.Length];
-                    for (int y = 0; y < job.H; y++)
+                    if (job.Only != null)
                     {
-                        Array.Copy(topDown, y * job.W, pixels, (job.H - 1 - y) * job.W, job.W);
+                        Color32[] topDown = renderer.RenderOnly(job.Nodes, job.Only, job.Scale, job.X, job.Y, job.W, job.H);
+                        // Textures store rows bottom-up.
+                        var pixels = new Color32[topDown.Length];
+                        for (int y = 0; y < job.H; y++)
+                        {
+                            Array.Copy(topDown, y * job.W, pixels, (job.H - 1 - y) * job.W, job.W);
+                        }
+
+                        job.Pixels = pixels;
+                    }
+                    else
+                    {
+                        job.Pixels = renderer.Render(job.Nodes, job.Background, job.Scale, job.X, job.Y, job.W, job.H, job.Apron, job.Exclude,
+                            RentPixels(job.W * job.H), true);
                     }
 
-                    job.Pixels = pixels;
                     if (renderer.Missing.Count > 0)
                     {
                         job.Missing = new string[renderer.Missing.Count];
