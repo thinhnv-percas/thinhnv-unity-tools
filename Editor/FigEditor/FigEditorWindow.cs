@@ -221,6 +221,68 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
+        /// <summary>Where the open file came from, when it was imported from a Figma link.</summary>
+        private FigmaSource Source
+        {
+            get
+            {
+                if (file != file4Source)
+                {
+                    file4Source = file;
+                    cachedSource = FigmaSource.FromFile(file);
+                }
+
+                return cachedSource;
+            }
+        }
+
+        private FigFile file4Source;
+        private FigmaSource cachedSource;
+
+        private void UpdateFromFigma()
+        {
+            FigmaSource from = Source;
+            if (from == null)
+            {
+                return;
+            }
+
+            if (hasUnsavedChanges && !EditorUtility.DisplayDialog("Update from Figma",
+                    $"{Path.GetFileName(filePath)} has unsaved edits. Updating replaces the file with Figma's current version, so they are lost.", "Continue", "Cancel"))
+            {
+                return;
+            }
+
+            FigImportWindow.ShowUpdate(filePath, from);
+        }
+
+        /// <summary>Show a file the Figma import just wrote (and its linked layer), or reload it after an update.</summary>
+        public static void OpenImported(string path, string nodeId, bool update)
+        {
+            var w = GetWindow<FigEditorWindow>();
+            w.Show();
+            bool same = w.file != null && !string.IsNullOrEmpty(w.filePath) &&
+                        string.Equals(Path.GetFullPath(w.filePath), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase);
+            if (same && update)
+            {
+                // The user already agreed to replace the edits.
+                w.hasUnsavedChanges = false;
+                w.LoadFrom(path, quiet: false);
+            }
+            else
+            {
+                w.OpenFile(path);
+            }
+
+            if (!string.IsNullOrEmpty(nodeId) && w.file?.Find(nodeId) != null)
+            {
+                w.Select(nodeId);
+                w.pendingZoomTo = nodeId;
+            }
+
+            w.Repaint();
+        }
+
         /// <summary>Drop every edit since the last save: read the file from disk again (history cleared).</summary>
         private void DiscardChanges()
         {
@@ -324,6 +386,17 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Open…"), false, () => Defer(ShowOpenDialog));
+            menu.AddItem(new GUIContent("Import from Figma Link…"), false, () => Defer(() => FigImportWindow.ShowImport(null)));
+            if (Source != null)
+            {
+                menu.AddItem(new GUIContent("Update from Figma…"), false, () => Defer(UpdateFromFigma));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Update from Figma…"));
+            }
+
+            menu.AddItem(new GUIContent("Figma Access Token…"), false, FigmaSettings.Open);
             foreach (string recent in recentFiles)
             {
                 if (recent != filePath && File.Exists(recent))
@@ -433,6 +506,11 @@ namespace Thinhnv.UnityTools.FigEditor
                 Defer(ShowOpenDialog);
             }
 
+            if (GUI.Button(new Rect(box.x + 170, box.y + 112, 190, 32), "Import from Figma link…"))
+            {
+                Defer(() => FigImportWindow.ShowImport(null));
+            }
+
             float y = box.y + 160;
             if (recentFiles.Count > 0)
             {
@@ -536,12 +614,13 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             string name = Path.GetFileNameWithoutExtension(filePath);
-            float labelWidth = r.width - 46 - (hasUnsavedChanges ? 64 : 0);
+            FigmaSource linked = Source;
+            float labelWidth = r.width - 46 - (linked != null ? 28 : 0);
             GUI.Label(new Rect(r.x + 38, r.y + 6, labelWidth, 16), name, FigTheme.Bold);
-            GUI.Label(new Rect(r.x + 38, r.y + 22, labelWidth, 14), hasUnsavedChanges ? "Edited — not saved" : "Saved", FigTheme.Faint);
-            if (hasUnsavedChanges && GUI.Button(new Rect(r.xMax - 70, r.y + 11, 62, 20), new GUIContent("Discard", "Discard all unsaved edits and read the file again"), EditorStyles.miniButton))
+            GUI.Label(new Rect(r.x + 38, r.y + 22, labelWidth, 14), hasUnsavedChanges ? "Edited — not saved" : linked != null ? "Saved · from Figma" : "Saved", FigTheme.Faint);
+            if (linked != null && FigTheme.IconButton(new Rect(r.xMax - 30, r.y + 8, 24, 24), "rotate", "Update from Figma (" + (linked.Name ?? linked.FileKey) + ")"))
             {
-                Defer(DiscardChanges);
+                Defer(UpdateFromFigma);
             }
             FigTheme.Separator(new Rect(r.x, r.y + HeaderHeight + 4, r.width, 1));
 
@@ -583,13 +662,20 @@ namespace Thinhnv.UnityTools.FigEditor
                 UndoStep(true);
             }
 
-            var zoomRect = new Rect(r.xMax - 132, r.y + 8, 52, 24);
+            // Save, with Discard beside it while there are unsaved edits.
+            float discardWidth = hasUnsavedChanges ? 60f : 0f;
+            var zoomRect = new Rect(r.xMax - 124 - discardWidth, r.y + 8, 50, 24);
             if (FigTheme.FlatButton(zoomRect, Mathf.RoundToInt(viewScale * 100f) + "% ▾", FigTheme.Label))
             {
                 ShowZoomMenu();
             }
 
-            if (FigTheme.AccentButton(new Rect(r.xMax - 72, r.y + 8, 62, 24), hasUnsavedChanges ? "Save*" : "Save"))
+            if (hasUnsavedChanges && GUI.Button(new Rect(r.xMax - 70 - discardWidth, r.y + 9, discardWidth - 4, 22), new GUIContent("Discard", "Discard all unsaved edits and read the file again"), EditorStyles.miniButton))
+            {
+                Defer(DiscardChanges);
+            }
+
+            if (FigTheme.AccentButton(new Rect(r.xMax - 70, r.y + 8, 62, 24), hasUnsavedChanges ? "Save*" : "Save"))
             {
                 Defer(() => SaveTo(filePath));
             }

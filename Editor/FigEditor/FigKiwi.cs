@@ -235,6 +235,105 @@ namespace Thinhnv.UnityTools.FigEditor
             return schema;
         }
 
+        /// <summary>
+        /// Parse the text form of a schema, one definition per line: <c>enum Name A=0 B=1</c>,
+        /// <c>struct Name type name, type name</c> (fields numbered in order) or
+        /// <c>message Name type name=id, …</c>; <c>type[]</c> is an array.
+        /// </summary>
+        public static KiwiSchema Parse(string text)
+        {
+            var schema = new KiwiSchema();
+            var pending = new List<KeyValuePair<KiwiField, string>>();
+            foreach (string raw in text.Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0)
+                {
+                    continue;
+                }
+
+                int space = line.IndexOf(' ');
+                int nameEnd = line.IndexOf(' ', space + 1);
+                string kind = line.Substring(0, space);
+                string name = nameEnd < 0 ? line.Substring(space + 1) : line.Substring(space + 1, nameEnd - space - 1);
+                string rest = nameEnd < 0 ? "" : line.Substring(nameEnd + 1).Trim();
+                if (kind != "enum" && kind != "struct" && kind != "message")
+                {
+                    throw new FormatException("kiwi schema text: unknown definition kind " + kind);
+                }
+
+                var def = new KiwiDef
+                {
+                    Name = name,
+                    Index = schema.Defs.Count,
+                    Kind = kind == "enum" ? KiwiDefKind.Enum : kind == "struct" ? KiwiDefKind.Struct : KiwiDefKind.Message,
+                };
+
+                if (def.Kind == KiwiDefKind.Enum)
+                {
+                    foreach (string item in rest.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        int eq = item.IndexOf('=');
+                        def.Fields.Add(new KiwiField { Name = item.Substring(0, eq), Value = uint.Parse(item.Substring(eq + 1), CultureInfo.InvariantCulture) });
+                    }
+                }
+                else if (rest.Length > 0)
+                {
+                    uint next = 1;
+                    foreach (string item in rest.Split(','))
+                    {
+                        string[] parts = item.Trim().Split(' ');
+                        if (parts.Length != 2)
+                        {
+                            throw new FormatException($"kiwi schema text: bad field '{item}' in {name}");
+                        }
+
+                        string fieldName = parts[1];
+                        uint value = next++;
+                        int eq = fieldName.IndexOf('=');
+                        if (eq >= 0)
+                        {
+                            value = uint.Parse(fieldName.Substring(eq + 1), CultureInfo.InvariantCulture);
+                            fieldName = fieldName.Substring(0, eq);
+                        }
+
+                        string type = parts[0];
+                        var field = new KiwiField { Name = fieldName, Value = value, IsArray = type.EndsWith("[]", StringComparison.Ordinal) };
+                        pending.Add(new KeyValuePair<KiwiField, string>(field, field.IsArray ? type.Substring(0, type.Length - 2) : type));
+                        def.Fields.Add(field);
+                    }
+                }
+
+                schema.Defs.Add(def);
+                schema.byName[def.Name] = def;
+            }
+
+            foreach (KeyValuePair<KiwiField, string> p in pending)
+            {
+                int builtin = Array.IndexOf(BuiltinNames, p.Value);
+                if (builtin >= 0)
+                {
+                    p.Key.Type = (KiwiType)builtin;
+                }
+                else
+                {
+                    p.Key.Type = KiwiType.Def;
+                    p.Key.TypeDef = schema.Find(p.Value);
+                    if (p.Key.TypeDef == null)
+                    {
+                        throw new FormatException("kiwi schema text: unknown type " + p.Value);
+                    }
+                }
+            }
+
+            foreach (KiwiDef def in schema.Defs)
+            {
+                def.BuildLookups();
+            }
+
+            return schema;
+        }
+
         public byte[] Encode()
         {
             var w = new KiwiWriter(4096);

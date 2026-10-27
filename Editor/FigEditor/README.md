@@ -3,16 +3,17 @@
 Open, inspect and edit Figma `.fig` files (Figma: *File > Save local copy…*) inside the Unity Editor.
 
 Open via **Tools > Thinhnv > Fig Editor**, right-click a `.fig` asset > **Open in Fig Editor**, or drop a
-`.fig` file onto the empty window.
+`.fig` file onto the empty window. Files can also be imported straight from a Figma link (see
+[Import from Figma](#import-from-figma)).
 
 ## Layout
 
 The window follows figcraft's (and Figma's) editor layout:
 
 - **Rail** (left edge): *Layers*, *Assets*, *File*.
-- **Left panel**: the file menu (open, recent, save, save as, discard changes / reload, reveal), the
-  file name and its saved state with a *Discard* button while there are unsaved edits (it reads the file
-  from disk again and clears the history), then the panel the rail picked:
+- **Left panel**: the file menu (open, import from a Figma link, update from Figma, access token, recent,
+  save, save as, discard changes / reload, reveal), the file name and its saved state (with an
+  *Update from Figma* button for imported files), then the panel the rail picked:
   - *Layers*: the pages, then the layer tree of the current page in Figma's order (topmost first),
     with type icons, hover eye / lock buttons, double-click or F2 to rename, arrow-key navigation and a
     right-click menu (rename, select, zoom to, order, duplicate, delete, copy GUID). Layers inside an
@@ -24,7 +25,8 @@ The window follows figcraft's (and Figma's) editor layout:
     document-level fields, JSON / schema exports.
 - **Canvas**: the page rendered like Figma renders it (see [Canvas](#canvas)), frame titles, selection
   and hover outlines, a size badge, smart guides and the floating tool bar.
-- **Right panel**: undo / redo, the zoom menu, *Save*, and three tabs:
+- **Right panel**: undo / redo, the zoom menu, *Save* with *Discard* beside it while there are unsaved
+  edits (it reads the file from disk again and clears the history), and three tabs:
   - *Design*: the selection's header (instances link to their main component), alignment, position and
     rotation, size with ratio lock and *Clip content*, an auto layout summary, layer opacity, blend mode
     and corner radii, typography (text, font, size, line height, letter spacing, alignment, resizing),
@@ -101,6 +103,42 @@ The canvas is a software renderer (`FigRenderer`) that follows figcraft's render
   they are ready, so nothing flickers.
 - **Lazy images**: images decode on first use, two per frame, with a mip chain for zoomed-out drawing.
 
+## Import from Figma
+
+**File menu › Import from Figma Link…** (or *Tools › Thinhnv › Fig Editor - Import from Figma Link*, or
+the button on the empty window) downloads a file through Figma's REST API and writes it as a `.fig` into
+the import folder (default `Assets/Figma`). Paste any figma.com file / design / prototype link, a branch
+link or a bare file key; with a `node-id` in the link you can fetch only that layer (with its page), and
+the editor opens on it.
+
+**Update from Figma** (file menu, or the button next to the file name) fetches the file again from the
+link stored in its `meta.json` and replaces it; it first asks Figma for the file's version and does
+nothing when it hasn't changed. The previous file is kept as `.bak`.
+
+The API needs a **personal access token**: in Figma, *Settings › Security › Personal access tokens*,
+scope *File content: read-only*. Paste it in **Preferences › Thinhnv › Fig Editor** (*Test* checks it).
+It is stored in this computer's Unity preferences (EditorPrefs), never in the project; the
+`FIGMA_TOKEN` environment variable is used when none is set.
+
+The REST API can't export a `.fig` itself, so the file is rebuilt from what it describes, with the kiwi
+schema figcraft's exporter writes: layers, transforms, sizes, fills (solid, gradients, images), strokes
+and their outlines, effects, corner radii, clipping, masks, constraints, auto layout settings, vector
+and boolean outlines, text with its styles, the images and the thumbnail. What REST doesn't carry is
+missing: text glyph outlines (text draws in an OS font until Figma lays it out), component properties
+and overrides (instances arrive resolved and become frames with their content), prototype links,
+variables. Downloads run in the background and can be cancelled; notes about what was left out go to
+the console.
+
+## Undo and saving
+
+Canvas edits, the Design panel, renaming, visibility and lock, reordering, creating, duplicating and
+deleting are undoable. Consecutive edits of the same thing within a second merge into one step (dragging
+a slider is one undo). Edits made in the *Inspect* tab are not recorded.
+
+**Save** overwrites the file (a `.bak` copy of the original is written first, once per session);
+**Save As** writes a new file; **Discard** drops every unsaved edit. Edits live in memory until saved
+and are lost on a script reload unless saved when the window asks.
+
 ## How the format is handled
 
 A `.fig` file is a zip holding `canvas.fig`, `meta.json`, `thumbnail.png` and `images/<sha1>`.
@@ -125,6 +163,9 @@ zip members other than `canvas.fig` are kept byte for byte.
 | `FigPath.cs`, `FigPaint.cs` | Path blobs and shapes; paints, gradients, effects, decoded images |
 | `FigRaster.cs`, `FigRenderer.cs` | Coverage rasterizer, blur; the software renderer |
 | `FigTextPath.cs` | The path a text-on-path layer follows, from its vector network |
+| `FigmaApi.cs`, `FigRestImport.cs` | Figma REST downloads; REST JSON → `.fig` |
+| `FigDefaultSchema.cs`, `FigJson.cs` | The schema written into imported files; a JSON reader |
+| `FigImportWindow.cs`, `FigmaSettings.cs` | Import / update window; the access token preferences |
 | `FigTileCache.cs` | Threaded tile cache, lifted drag layer, image decoding |
 | `FigGeometry.cs` | Affine transforms and rectangle helpers |
 | `FigTheme.cs` | Colours, styles and the vector icons |
