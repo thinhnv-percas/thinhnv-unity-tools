@@ -48,6 +48,34 @@ namespace Thinhnv.UnityTools.FigEditor
         private readonly List<Vector2> polyB = new(64);
         private readonly List<Vector2> polyC = new(64);
         private GUIStyle textStyle;
+        private Material colorMaterial;
+
+        /// <summary>
+        /// A vertex-coloured, alpha-blended, depth-ignoring material for the GL batches, built from
+        /// Unity's built-in <c>Hidden/Internal-Colored</c> shader (HandleUtility's own wire material
+        /// isn't public in every Unity version).
+        /// </summary>
+        private Material ColorMaterial()
+        {
+            if (colorMaterial != null)
+            {
+                return colorMaterial;
+            }
+
+            Shader shader = Shader.Find("Hidden/Internal-Colored");
+            if (shader == null)
+            {
+                return null;
+            }
+
+            colorMaterial = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
+            colorMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            colorMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            colorMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            colorMaterial.SetInt("_ZWrite", 0);
+            colorMaterial.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+            return colorMaterial;
+        }
 
         /// <summary>True when the last frame left work undone (rasters, images); repaint again.</summary>
         public bool HasPendingWork { get; private set; }
@@ -64,6 +92,11 @@ namespace Thinhnv.UnityTools.FigEditor
         public void Dispose()
         {
             Clear();
+            if (colorMaterial != null)
+            {
+                UnityEngine.Object.DestroyImmediate(colorMaterial);
+                colorMaterial = null;
+            }
         }
 
         /// <summary>Drop every cached raster and decoded blob (file closed or reloaded).</summary>
@@ -330,7 +363,15 @@ namespace Thinhnv.UnityTools.FigEditor
 
             if (Event.current.type == EventType.Repaint)
             {
-                HandleUtility.ApplyWireMaterial();
+                Material material = ColorMaterial();
+                if (material == null)
+                {
+                    verts.Clear();
+                    colors.Clear();
+                    return;
+                }
+
+                material.SetPass(0);
                 GL.PushMatrix();
                 GL.MultMatrix(Handles.matrix);
                 GL.Begin(GL.TRIANGLES);
