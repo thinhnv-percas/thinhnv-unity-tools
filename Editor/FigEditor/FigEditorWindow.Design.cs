@@ -634,10 +634,14 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             KiwiValue change = n?.Change;
             SectionHeader("Text");
-            if (n?.Type == "TEXT_PATH")
+            FigSceneNode laidOut = SelectedSceneNode;
+            if (laidOut != null && (laidOut.GlyphsFromLayout || laidOut.FallbackText))
             {
+                // Without Figma's own glyphs the text is laid out here with the installed fonts.
+                string note = laidOut.FallbackText ? "No font files were found: the text is drawn with Unity's font." :
+                    !string.IsNullOrEmpty(laidOut.FontNote) ? "Not installed: " + laidOut.FontNote + "." : "Laid out with the installed font.";
                 BeginRow();
-                GUILayout.Label("Text on a path. Edited text is drawn off the path until Figma lays it out again.", EditorStyles.wordWrappedMiniLabel);
+                GUILayout.Label(note, EditorStyles.wordWrappedMiniLabel);
                 EndRow();
             }
 

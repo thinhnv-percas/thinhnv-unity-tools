@@ -76,7 +76,15 @@ The canvas is a software renderer (`FigRenderer`) that follows figcraft's render
   without the fonts, with its fills (per-character ones too) and strokes (Figma's stroke outline, or
   the glyphs outlined inside / centre / outside). Text on a path (`TEXT_PATH`) follows its path: the
   path is read from the layer's vector network and each glyph is turned onto it, the way figcraft
-  places it. Text without glyphs (new or edited here) is drawn in an OS font close to the one named.
+  places it.
+- Text without Figma's glyphs (edited here, imported from a Figma link, overridden in an instance) is
+  laid out here with the installed fonts, following figcraft's layout rules: per-character styles,
+  kerning, letter spacing, wrapping, line heights in whole pixels (auto = the font's ascent + descent +
+  gap), paragraph spacing and indent, alignment and justification, vertical alignment, underline and
+  strike-through, end truncation; characters a font lacks (Vietnamese, CJK…) come from fallback fonts.
+  Fonts are read from the system font folders and from the project's `Assets` (TrueType, OpenType/CFF,
+  collections); a missing family is replaced by one of the same weight and slant and the Design panel
+  says which. After installing fonts, use *File menu › Rescan Installed Fonts*.
 - Instances are expanded the way figcraft expands them: override rows from `symbolOverrides` and
   `derivedSymbolData` matched by GUID path (with override-key aliases), component properties (text,
   visibility, instance swap), nested instances, and constraints when an instance is resized.
@@ -95,8 +103,9 @@ The canvas is a software renderer (`FigRenderer`) that follows figcraft's render
 - **No garbage per tile**: render buffers, coverage masks, blur scratch and pixel arrays are pooled per
   worker, so rendering doesn't trigger the collector pauses that stall the editor.
 - **Level of detail**: a layer smaller than a pixel is drawn as one blended dot, so zoomed out pages of
-  thousands of layers render in a few milliseconds per tile. Text drawn with OS fonts uses a few font
-  sizes scaled to fit, so zooming doesn't make Unity rasterize the font at every step.
+  thousands of layers render in a few milliseconds per tile.
+- **Text**: layouts are cached by their text and style, glyph outlines per font; the font index is
+  cached in `Library/FigEditorFonts.tsv`.
 - **Lifted drag**: when a drag starts, the moved layers are rendered once into their own texture and
   the tiles beneath are rendered without them; during the drag only that texture moves. On release the
   file is updated, the tiles under the old and new place re-render, and the lifted copy stays until
@@ -124,7 +133,7 @@ The REST API can't export a `.fig` itself, so the file is rebuilt from what it d
 schema figcraft's exporter writes: layers, transforms, sizes, fills (solid, gradients, images), strokes
 and their outlines, effects, corner radii, clipping, masks, constraints, auto layout settings, vector
 and boolean outlines, text with its styles, the images and the thumbnail. What REST doesn't carry is
-missing: text glyph outlines (text draws in an OS font until Figma lays it out), component properties
+missing: text glyph outlines (text is laid out with the installed fonts), component properties
 and overrides (instances arrive resolved and become frames with their content), prototype links,
 variables. Downloads run in the background and can be cancelled; notes about what was left out go to
 the console.
@@ -163,6 +172,7 @@ zip members other than `canvas.fig` are kept byte for byte.
 | `FigPath.cs`, `FigPaint.cs` | Path blobs and shapes; paints, gradients, effects, decoded images |
 | `FigRaster.cs`, `FigRenderer.cs` | Coverage rasterizer, blur; the software renderer |
 | `FigTextPath.cs` | The path a text-on-path layer follows, from its vector network |
+| `FigFont.cs`, `FigTextLayout.cs` | Installed fonts (TrueType / CFF outlines, kerning); text layout |
 | `FigmaApi.cs`, `FigRestImport.cs` | Figma REST downloads; REST JSON → `.fig` |
 | `FigDefaultSchema.cs`, `FigJson.cs` | The schema written into imported files; a JSON reader |
 | `FigImportWindow.cs`, `FigmaSettings.cs` | Import / update window; the access token preferences |
@@ -188,8 +198,9 @@ MIT / Apache-2.0).
 - Background blur only sees what lies within a tile's margin, so very large background blurs can show
   tile seams.
 - Layers inside instances are read-only; edit the main component.
-- Text on a path is drawn from Figma's glyphs; editing its text draws it straight (in an OS font) until
-  Figma lays it out on the path again.
+- Text laid out here (no Figma glyphs) has no complex shaping: no ligatures, right-to-left or Indic
+  shaping, and variable fonts use their default instance (heavier weights are thickened). It can
+  differ slightly from Figma where the fonts differ; install the fonts the design uses for a close match.
 - Resizing on the canvas drops the layer's cached `fillGeometry` / `strokeGeometry` (Figma rebuilds them
   from the size); vectors, booleans and groups can be moved but not resized there. Resizing text switches
   it to auto height with a fixed width (fixed size when the height changed) so Figma keeps the new box.

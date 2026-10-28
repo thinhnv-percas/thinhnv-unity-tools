@@ -9,6 +9,9 @@ namespace Thinhnv.UnityTools.FigEditor
     {
         public FigPath Path;
         public List<FigPaint> Fills;
+
+        /// <summary>Extra stroke (layer units) thickening a face lighter than the style asks for.</summary>
+        public float Embolden;
     }
 
     /// <summary>
@@ -66,6 +69,12 @@ namespace Thinhnv.UnityTools.FigEditor
 
         // Text drawn by the UI when the file has no glyph outlines for it
         public bool FallbackText;
+
+        /// <summary>The glyphs were laid out here with installed fonts (not Figma's cached outlines).</summary>
+        public bool GlyphsFromLayout;
+
+        /// <summary>Fonts that aren't installed and what drew them instead.</summary>
+        public string FontNote;
         public string Text;
         public float FontSize = 12f;
         public string FontFamily;
@@ -876,7 +885,7 @@ namespace Thinhnv.UnityTools.FigEditor
             if (node.Strokes != null && (node.StrokeWeight > 0 || v.Bool("borderStrokeWeightsIndependent", false)))
             {
                 List<FigPath> outline = GeometryPaths(v.List("strokeGeometry"));
-                if (outline != null && (!text || node.Glyphs != null))
+                if (outline != null && (!text || (node.Glyphs != null && !node.GlyphsFromLayout)))
                 {
                     // Text: only while its cached glyphs are current (the outline is made from them).
                     node.StrokePaths = outline;
@@ -1011,6 +1020,8 @@ namespace Thinhnv.UnityTools.FigEditor
         {
             node.Glyphs = null;
             node.FallbackText = false;
+            node.GlyphsFromLayout = false;
+            node.FontNote = null;
             if (!IsText(node.Type))
             {
                 return;
@@ -1036,16 +1047,6 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            // Cached glyph outlines are only good for the text they were laid out for.
-            KiwiValue derived = v.Get("derivedTextData");
-            bool stale = derived == null || (v.HasRows && v.Overrides("textData") && !v.Overrides("derivedTextData"));
-            List<KiwiValue> glyphs = stale ? null : derived.Get("glyphs")?.Items;
-            if (glyphs == null || glyphs.Count == 0 || blobs == null)
-            {
-                node.FallbackText = !string.IsNullOrEmpty(node.Text);
-                return;
-            }
-
             // Per-character styles may paint their own fills.
             var styleFills = new Dictionary<uint, List<FigPaint>>();
             List<KiwiValue> table = textData?.Get("styleOverrideTable")?.Items;
@@ -1060,6 +1061,22 @@ namespace Thinhnv.UnityTools.FigEditor
                         styleFills[(uint)id.Uint] = fills;
                     }
                 }
+            }
+
+            // Cached glyph outlines are only good for the text they were laid out for; without them
+            // (text edited here, imported from Figma's API, overridden in an instance) the text is
+            // laid out with the installed fonts.
+            KiwiValue derived = v.Get("derivedTextData");
+            bool stale = derived == null || (v.HasRows && v.Overrides("textData") && !v.Overrides("derivedTextData"));
+            List<KiwiValue> glyphs = stale ? null : derived.Get("glyphs")?.Items;
+            if (glyphs == null || glyphs.Count == 0 || blobs == null)
+            {
+                if (!LayOut(node, v, textData, table, styleFills))
+                {
+                    node.FallbackText = !string.IsNullOrEmpty(node.Text);
+                }
+
+                return;
             }
 
             // Glyph outlines are in em units; work out whether they point up (font space) or down.
@@ -1098,7 +1115,7 @@ namespace Thinhnv.UnityTools.FigEditor
 
             if (node.Type == "TEXT_PATH")
             {
-                PlaceOnPath(node, v, placed, origins);
+                PlaceOnPath(node, v, placed, origins, false);
             }
 
             var runs = new Dictionary<uint, List<FigPath>>();
@@ -1133,12 +1150,115 @@ namespace Thinhnv.UnityTools.FigEditor
 
         public static bool IsText(string type) => type == "TEXT" || type == "TEXT_PATH";
 
+        /// <summary>Lay the text out with the installed fonts; false when no font is installed at all.</summary>
+        private bool LayOut(FigSceneNode node, FigView v, KiwiValue textData, List<KiwiValue> table, Dictionary<uint, List<FigPaint>> styleFills)
+        {
+            var spec = new FigTextSpec
+            {
+                Text = node.Text,
+                AlignH = node.TextAlignH,
+                AlignV = node.TextAlignV,
+                AutoResize = v.EnumName("textAutoResize") ?? "NONE",
+                Width = node.Width,
+                Height = node.Height,
+                ParagraphSpacing = v.Float("paragraphSpacing", 0),
+                ParagraphIndent = v.Float("paragraphIndent", 0),
+                MaxLines = (int)(v.Get("maxLines")?.AsLong ?? 0),
+                Truncate = v.EnumName("textTruncation") == "ENDING",
+            };
+
+            spec.Base = new FigTextStyle().With(v.Get);
+            List<KiwiValue> ids = textData?.Get("characterStyleIDs")?.Items;
+            if (ids != null && ids.Count > 0)
+            {
+                spec.StyleIds = new uint[ids.Count];
+                for (int i = 0; i < ids.Count; i++)
+                {
+                    spec.StyleIds[i] = (uint)ids[i].Uint;
+                }
+            }
+
+            if (table != null)
+            {
+                foreach (KiwiValue entry in table)
+                {
+                    KiwiValue id = entry.Get("styleID");
+                    if (id != null && id.Uint != 0)
+                    {
+                        spec.Overrides[(uint)id.Uint] = spec.Base.With(entry.Get);
+                    }
+                }
+            }
+
+            FigTextLayout.Result laid;
+            try
+            {
+                laid = FigTextLayout.Layout(spec);
+            }
+            catch (Exception)
+            {
+                laid = null;
+            }
+
+            if (laid == null)
+            {
+                return false;
+            }
+
+            node.FontNote = laid.Substitutions;
+            node.GlyphsFromLayout = true;
+            var placed = new FigPath[laid.Glyphs.Count];
+            var origins = new Vector2[laid.Glyphs.Count];
+            for (int i = 0; i < placed.Length; i++)
+            {
+                placed[i] = laid.Glyphs[i].Path;
+                origins[i] = laid.Glyphs[i].Origin;
+            }
+
+            if (node.Type == "TEXT_PATH")
+            {
+                PlaceOnPath(node, v, placed, origins, true);
+            }
+
+            var runs = new Dictionary<uint, List<FigPath>>();
+            for (int i = 0; i < placed.Length; i++)
+            {
+                if (placed[i] == null)
+                {
+                    continue;
+                }
+
+                uint style = laid.Glyphs[i].Style;
+                if (!runs.TryGetValue(style, out List<FigPath> list))
+                {
+                    runs[style] = list = new List<FigPath>();
+                }
+
+                list.Add(placed[i]);
+            }
+
+            node.Glyphs = new List<FigGlyphRun>();
+            foreach (KeyValuePair<uint, List<FigPath>> run in runs)
+            {
+                List<FigPaint> fills = styleFills.TryGetValue(run.Key, out List<FigPaint> own) ? own : node.Fills;
+                if (fills == null)
+                {
+                    continue;
+                }
+
+                laid.Embolden.TryGetValue(run.Key, out float embolden);
+                node.Glyphs.Add(new FigGlyphRun { Path = FigPath.Concat(run.Value, false), Fills = fills, Embolden = embolden });
+            }
+
+            return true;
+        }
+
         /// <summary>
         /// Text on a path: turn each glyph onto the layer's path like figcraft does (its baseline on the
         /// path where its centre falls). When the cached glyphs already follow the path (their baselines
         /// differ), only turn each one to the path's direction under it.
         /// </summary>
-        private void PlaceOnPath(FigSceneNode node, FigView v, FigPath[] placed, Vector2[] origins)
+        private void PlaceOnPath(FigSceneNode node, FigView v, FigPath[] placed, Vector2[] origins, bool laidOutHere)
         {
             FigTextPath path = ReadTextPath(node, v);
             if (path == null)
@@ -1166,7 +1286,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
-            bool alreadyOnPath = maxY - minY > 0.5f;
+            bool alreadyOnPath = !laidOutHere && maxY - minY > 0.5f;
             float shift = node.TextAlignH == "CENTER" ? width / 2f : node.TextAlignH == "RIGHT" ? width : 0f;
             float origin = path.Start * path.Length - shift;
             float baseline = origins[first].y;
@@ -1261,7 +1381,9 @@ namespace Thinhnv.UnityTools.FigEditor
             {
                 foreach (FigGlyphRun run in node.Glyphs)
                 {
-                    local = FigGeometry.Union(local, run.Path.Bounds);
+                    Rect g = run.Path.Bounds;
+                    float e = run.Embolden;
+                    local = FigGeometry.Union(local, Rect.MinMaxRect(g.xMin - e, g.yMin - e, g.xMax + e, g.yMax + e));
                 }
             }
 

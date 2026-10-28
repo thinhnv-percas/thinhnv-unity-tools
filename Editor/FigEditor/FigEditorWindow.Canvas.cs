@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Globalization;
 using UnityEditor;
 using UnityEngine;
@@ -144,6 +145,15 @@ namespace Thinhnv.UnityTools.FigEditor
         private void EnableCanvas()
         {
             wantsMouseMove = true;
+            // Text without Figma's glyph outlines is laid out with the installed fonts, the
+            // project's own font files included; the font index is cached in Library.
+            string assets = Application.dataPath;
+            if (!FigFonts.ExtraFolders.Contains(assets))
+            {
+                FigFonts.ExtraFolders.Add(assets);
+            }
+
+            FigFonts.CacheFile = Path.Combine(Path.GetDirectoryName(assets) ?? ".", "Library", "FigEditorFonts.tsv");
             tileCache ??= new FigTileCache();
             tileCache.ImageBytes = hash => file?.Member(FigFile.ImagePrefix + hash)?.Data;
             if (undoProxy == null)
@@ -2134,8 +2144,8 @@ namespace Thinhnv.UnityTools.FigEditor
         // ─── Text without glyph outlines ─────────────────────────────────────────
 
         /// <summary>
-        /// Text the file has no cached glyph outlines for (edited here, or overridden in an instance)
-        /// is drawn by Unity with the installed font of its family, over the rendered page.
+        /// The last resort for text that has neither Figma's glyph outlines nor an installed font to
+        /// lay it out with (no font files found at all): Unity draws it over the rendered page.
         /// </summary>
         private void DrawFallbackText(Rect local)
         {
@@ -2179,42 +2189,18 @@ namespace Thinhnv.UnityTools.FigEditor
                     continue;
                 }
 
-                // Draw at one of a few font sizes and scale to the exact one: every new size makes Unity
-                // rasterize the font again, which would happen on nearly every frame of a zoom.
-                int quantized = QuantizedFontSize(size);
-                float k = size / quantized;
                 GUI.BeginGroup(clip);
-                Matrix4x4 matrix = GUI.matrix;
-                var origin = new Vector2(r.x - clip.x, r.y - clip.y);
-                if (!Mathf.Approximately(k, 1f))
-                {
-                    GUIUtility.ScaleAroundPivot(new Vector2(k, k), origin);
-                }
-
-                GUI.Label(new Rect(origin.x, origin.y, r.width / k, r.height / k), n.Text, TextStyleFor(n, false, quantized));
-                GUI.matrix = matrix;
+                GUI.Label(new Rect(r.x - clip.x, r.y - clip.y, r.width, r.height), n.Text, TextStyleFor(n, false));
                 GUI.EndGroup();
             }
         }
 
-        /// <summary>Font sizes up to 16 px as they are; above, six steps per doubling.</summary>
-        private static int QuantizedFontSize(float size)
-        {
-            if (size <= 16f)
-            {
-                return Mathf.Clamp(Mathf.RoundToInt(size), 1, 16);
-            }
-
-            float steps = Mathf.Round(Mathf.Log(size, 2f) * 6f) / 6f;
-            return Mathf.Clamp(Mathf.RoundToInt(Mathf.Pow(2f, steps)), 1, 300);
-        }
-
-        private GUIStyle TextStyleFor(FigSceneNode n, bool editing, int fontSize = 0)
+        private GUIStyle TextStyleFor(FigSceneNode n, bool editing)
         {
             overlayText ??= new GUIStyle(EditorStyles.label) { richText = false, padding = new RectOffset(0, 0, 0, 0), margin = new RectOffset(0, 0, 0, 0) };
             var style = editing ? new GUIStyle(overlayText) : overlayText;
             style.font = OsFont(n.FontFamily);
-            style.fontSize = fontSize > 0 ? fontSize : Mathf.Clamp(Mathf.RoundToInt(n.FontSize * n.World.Scale * viewScale), 1, 300);
+            style.fontSize = Mathf.Clamp(Mathf.RoundToInt(n.FontSize * n.World.Scale * viewScale), 1, 300);
             string fs = n.FontStyle ?? "";
             bool bold = fs.IndexOf("Bold", StringComparison.OrdinalIgnoreCase) >= 0 || fs.IndexOf("Black", StringComparison.OrdinalIgnoreCase) >= 0 || fs.IndexOf("Semi", StringComparison.OrdinalIgnoreCase) >= 0;
             bool italic = fs.IndexOf("Italic", StringComparison.OrdinalIgnoreCase) >= 0;

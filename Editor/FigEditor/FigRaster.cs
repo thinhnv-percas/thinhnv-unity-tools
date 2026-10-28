@@ -109,6 +109,31 @@ namespace Thinhnv.UnityTools.FigEditor
             YMax = other.YMax;
         }
 
+        /// <summary>this = max(this, other) (union of coverages).</summary>
+        public void MaxWith(FigMask other)
+        {
+            for (int y = Math.Max(0, other.YMin); y <= Math.Min(Height - 1, other.YMax); y++)
+            {
+                int x0 = other.RowMin[y], x1 = other.RowMax[y];
+                if (x1 < x0)
+                {
+                    continue;
+                }
+
+                int row = y * Width;
+                for (int x = x0; x <= x1; x++)
+                {
+                    int i = row + x;
+                    if (other.A[i] > A[i])
+                    {
+                        A[i] = other.A[i];
+                    }
+                }
+
+                Touch(y, x0, x1);
+            }
+        }
+
         /// <summary>this = this × (1 − other) (what lies outside the other coverage).</summary>
         public void MultiplyByInverse(FigMask other)
         {

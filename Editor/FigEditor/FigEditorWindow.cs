@@ -221,6 +221,19 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
+        /// <summary>Fonts were installed or added to the project: index them again and lay the text out again.</summary>
+        private void RescanFonts()
+        {
+            FigFonts.Reset();
+            FigTextLayout.ClearCache();
+            // Rebuild the scene (and its tiles) without touching the edit history.
+            tileCache?.SetScene(null, false);
+            scene = null;
+            boardDirty = true;
+            Repaint();
+            Debug.Log("Fig Editor: " + FigFonts.Count + " font faces found.");
+        }
+
         /// <summary>Where the open file came from, when it was imported from a Figma link.</summary>
         private FigmaSource Source
         {
@@ -397,6 +410,7 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             menu.AddItem(new GUIContent("Figma Access Token…"), false, FigmaSettings.Open);
+            menu.AddItem(new GUIContent("Rescan Installed Fonts"), false, () => Defer(RescanFonts));
             foreach (string recent in recentFiles)
             {
                 if (recent != filePath && File.Exists(recent))

@@ -310,6 +310,17 @@ namespace Thinhnv.UnityTools.FigEditor
                     foreach (FigGlyphRun run in n.Glyphs)
                     {
                         FigMask cov = Coverage(new List<FigPath> { run.Path }, n.World, c);
+                        if (run.Embolden > 0)
+                        {
+                            // Synthesised bold: the outline thickened by a stroke along it.
+                            FigMask ring = GetMask(c);
+                            contours.Clear();
+                            run.Path.Flatten(ToPixels(n.World, c), Tolerance, contours);
+                            FigRaster.Fill(FigRaster.Stroke(contours, Mathf.Max(0.3f, run.Embolden * n.World.Scale * scale)), false, ring);
+                            cov.MaxWith(ring);
+                            Release(ring);
+                        }
+
                         foreach (FigPaint paint in run.Fills)
                         {
                             Composite(c, cov, clip, paint, opacity, n);

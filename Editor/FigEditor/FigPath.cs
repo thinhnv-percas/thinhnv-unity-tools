@@ -334,6 +334,15 @@ namespace Thinhnv.UnityTools.FigEditor
                 Points.Add(y);
             }
 
+            public void QuadTo(float x1, float y1, float x, float y)
+            {
+                Commands.Add(3);
+                Points.Add(x1);
+                Points.Add(y1);
+                Points.Add(x);
+                Points.Add(y);
+            }
+
             public void CubicTo(float x1, float y1, float x2, float y2, float x, float y)
             {
                 Commands.Add(4);
