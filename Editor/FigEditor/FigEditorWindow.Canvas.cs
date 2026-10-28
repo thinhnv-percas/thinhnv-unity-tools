@@ -163,11 +163,13 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             Undo.undoRedoPerformed += OnUnityUndoRedo;
+            EditorApplication.modifierKeysChanged += Repaint;
         }
 
         private void DisableCanvas()
         {
             Undo.undoRedoPerformed -= OnUnityUndoRedo;
+            EditorApplication.modifierKeysChanged -= Repaint;
             tileCache?.Dispose();
             tileCache = null;
             if (undoProxy != null)
@@ -1947,7 +1949,7 @@ namespace Thinhnv.UnityTools.FigEditor
             DrawFrameTitles(local);
 
             FigSceneNode hover = drag == Drag.None && hoverId != null && !boardSelection.Contains(hoverId) ? scene.Find(hoverId) : null;
-            if (hover != null)
+            if (hover != null && !Measuring)
             {
                 DrawNodeOutline(hover, 1f, hover.Expanded || hover.Type == "SYMBOL" || hover.Type == "INSTANCE" ? FigTheme.Component : FigTheme.Accent, Vector2.zero);
             }
@@ -2013,10 +2015,162 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
+            DrawMeasurements();
             if (bounds.HasValue && drag != Drag.Marquee)
             {
                 DrawSizeBadge(ToCanvas(bounds.Value));
             }
+        }
+
+        // ─── Measuring (hold Alt) ─────────────────────────────────────────────────
+
+        private static readonly Color MeasureColor = new Color(0.95f, 0.28f, 0.13f, 1f);
+
+        /// <summary>Alt held with a selection and nothing being dragged: distances are shown, like Figma.</summary>
+        private bool Measuring => Event.current != null && Event.current.alt && drag == Drag.None && boardSelection.Count > 0 && editingTextId == null;
+
+        /// <summary>
+        /// Hold Alt: the distances from the selection to the hovered layer (to its edges when it
+        /// contains the selection or the other way round, else the gaps between them), or to the
+        /// selection's parent when nothing else is hovered.
+        /// </summary>
+        private void DrawMeasurements()
+        {
+            if (!Measuring)
+            {
+                return;
+            }
+
+            Rect? selected = SelectionBounds();
+            if (!selected.HasValue)
+            {
+                return;
+            }
+
+            Rect a = selected.Value;
+            FigSceneNode other = hoverId != null && !boardSelection.Contains(hoverId) ? scene.Find(hoverId) : null;
+            if (other == null)
+            {
+                FigSceneNode first = scene.Find(First(boardSelection));
+                other = first != null && first.ParentIndex >= 0 ? scene.Nodes[first.ParentIndex] : null;
+            }
+
+            if (other == null)
+            {
+                return;
+            }
+
+            Rect b = other.Bounds;
+            DrawRectOutline(ToCanvas(b), 1f, MeasureColor);
+            DrawRectOutline(ToCanvas(a), 1f, MeasureColor);
+            if (Contains(b, a))
+            {
+                Inside(a, b);
+            }
+            else if (Contains(a, b))
+            {
+                Inside(b, a);
+            }
+            else
+            {
+                Gaps(a, b);
+            }
+        }
+
+        private static bool Contains(Rect outer, Rect inner)
+        {
+            const float e = 0.01f;
+            return inner.xMin >= outer.xMin - e && inner.xMax <= outer.xMax + e && inner.yMin >= outer.yMin - e && inner.yMax <= outer.yMax + e;
+        }
+
+        /// <summary>From each edge of <paramref name="inner"/> to the matching edge of <paramref name="outer"/>.</summary>
+        private void Inside(Rect inner, Rect outer)
+        {
+            float cy = inner.center.y, cx = inner.center.x;
+            MeasureLine(new Vector2(outer.xMin, cy), new Vector2(inner.xMin, cy));
+            MeasureLine(new Vector2(inner.xMax, cy), new Vector2(outer.xMax, cy));
+            MeasureLine(new Vector2(cx, outer.yMin), new Vector2(cx, inner.yMin));
+            MeasureLine(new Vector2(cx, inner.yMax), new Vector2(cx, outer.yMax));
+        }
+
+        /// <summary>The horizontal and vertical gaps between two separate (or overlapping) boxes.</summary>
+        private void Gaps(Rect a, Rect b)
+        {
+            // Horizontal: between facing sides, at the middle of the vertical overlap (else at the selection's centre).
+            float y0 = Mathf.Max(a.yMin, b.yMin), y1 = Mathf.Min(a.yMax, b.yMax);
+            float y = y1 >= y0 ? (y0 + y1) / 2f : a.center.y;
+            float x0 = Mathf.Max(a.xMin, b.xMin), x1 = Mathf.Min(a.xMax, b.xMax);
+            float x = x1 >= x0 ? (x0 + x1) / 2f : a.center.x;
+            if (a.xMax <= b.xMin)
+            {
+                MeasureLine(new Vector2(a.xMax, y), new Vector2(b.xMin, y));
+                Extension(new Vector2(b.xMin, y), b);
+            }
+            else if (b.xMax <= a.xMin)
+            {
+                MeasureLine(new Vector2(b.xMax, y), new Vector2(a.xMin, y));
+                Extension(new Vector2(b.xMax, y), b);
+            }
+            else
+            {
+                // Overlapping horizontally: the offsets between the left and between the right edges.
+                MeasureLine(new Vector2(Mathf.Min(a.xMin, b.xMin), y), new Vector2(Mathf.Max(a.xMin, b.xMin), y));
+                MeasureLine(new Vector2(Mathf.Min(a.xMax, b.xMax), y), new Vector2(Mathf.Max(a.xMax, b.xMax), y));
+            }
+
+            if (a.yMax <= b.yMin)
+            {
+                MeasureLine(new Vector2(x, a.yMax), new Vector2(x, b.yMin));
+                Extension(new Vector2(x, b.yMin), b);
+            }
+            else if (b.yMax <= a.yMin)
+            {
+                MeasureLine(new Vector2(x, b.yMax), new Vector2(x, a.yMin));
+                Extension(new Vector2(x, b.yMax), b);
+            }
+            else if (!(a.xMax <= b.xMin || b.xMax <= a.xMin))
+            {
+                MeasureLine(new Vector2(x, Mathf.Min(a.yMin, b.yMin)), new Vector2(x, Mathf.Max(a.yMin, b.yMin)));
+                MeasureLine(new Vector2(x, Mathf.Min(a.yMax, b.yMax)), new Vector2(x, Mathf.Max(a.yMax, b.yMax)));
+            }
+        }
+
+        /// <summary>A faint guide from a line's end to the box it measures to, when the end lies outside it.</summary>
+        private void Extension(Vector2 end, Rect box)
+        {
+            var faint = new Color(MeasureColor.r, MeasureColor.g, MeasureColor.b, 0.45f);
+            Vector2 clamped = new Vector2(Mathf.Clamp(end.x, box.xMin, box.xMax), Mathf.Clamp(end.y, box.yMin, box.yMax));
+            if ((clamped - end).sqrMagnitude > 1e-6f)
+            {
+                DrawLine(ToCanvas(end), ToCanvas(clamped), 1f, faint);
+            }
+        }
+
+        /// <summary>A red distance line with its length (in layer units) in a pill at its middle.</summary>
+        private void MeasureLine(Vector2 worldA, Vector2 worldB)
+        {
+            float length = (worldB - worldA).magnitude;
+            if (length < 0.01f)
+            {
+                return;
+            }
+
+            Vector2 a = ToCanvas(worldA), b = ToCanvas(worldB);
+            DrawLine(a, b, 1f, MeasureColor);
+            bool horizontal = Mathf.Abs(a.y - b.y) < 0.5f;
+            // End ticks.
+            Vector2 tick = horizontal ? new Vector2(0, 4) : new Vector2(4, 0);
+            DrawLine(a - tick, a + tick, 1f, MeasureColor);
+            DrawLine(b - tick, b + tick, 1f, MeasureColor);
+
+            string text = FormatNumber(length);
+            Vector2 size = FigTheme.Badge.CalcSize(new GUIContent(text));
+            Vector2 mid = (a + b) * 0.5f;
+            var pill = horizontal
+                ? new Rect(Mathf.Round(mid.x - size.x * 0.5f - 4), Mathf.Round(mid.y + 4), size.x + 8, 16)
+                : new Rect(Mathf.Round(mid.x + 5), Mathf.Round(mid.y - 8), size.x + 8, 16);
+            EditorGUI.DrawRect(pill, MeasureColor);
+            GUI.Label(pill, text, FigTheme.Badge);
         }
 
         private void DrawNodeOutline(FigSceneNode n, float width, Color color, Vector2 worldOffset)

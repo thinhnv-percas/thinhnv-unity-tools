@@ -31,7 +31,9 @@ The window follows figcraft's (and Figma's) editor layout:
     rotation, size with ratio lock and *Clip content*, an auto layout summary, layer opacity, blend mode
     and corner radii, typography (text, font, size, line height, letter spacing, alignment, resizing),
     fills and strokes (solid with hex and opacity, gradients with a swatch of their shape, image scale
-    mode; add, remove, hide), stroke weight and alignment, effects with their parameters, and PNG export at 0.5×–4×.
+    mode; add, remove, hide), stroke weight and alignment, effects with their parameters, and
+    export: a PNG file at 0.5×–4×, or straight into a game texture (see
+    [Textures and the project config](#textures-and-the-project-config)).
     The chevron on a paint row opens its editor: the type (solid, linear, radial, angular, diamond)
     and, for gradients, the ramp with draggable stops (click the ramp to add one), each stop's
     position, colour with alpha and hex, *+ Stop*, *Flip* and *Rotate 90°*.
@@ -55,6 +57,7 @@ The colours follow the editor skin: dark like figcraft with the Pro skin, a ligh
 | Multi-select | Shift-click; drag a marquee on empty canvas or on an unselected top-level frame's background; Ctrl/Cmd+A selects siblings |
 | Move | Drag (Shift locks the axis); smart guides snap to sibling and parent edges and centres (Ctrl/Cmd disables) |
 | Resize | Drag a handle (Shift keeps the ratio, Alt from the centre) |
+| Measure | Hold Alt with a selection: distances to the hovered layer (to its edges when one contains the other, else the gaps), or to the selection's parent when nothing else is hovered |
 | Create | Drag with a shape tool, or click for a 100×100 layer, inside the frame under the cursor; the text tool opens an editor |
 | Nudge | Arrows (Shift: 10 px) |
 | Edit | Delete, Ctrl/Cmd+D duplicate, Ctrl/Cmd+Shift+H show/hide, right-click menu |
@@ -138,6 +141,24 @@ and overrides (instances arrive resolved and become frames with their content), 
 variables. Downloads run in the background and can be cancelled; notes about what was left out go to
 the console.
 
+## Textures and the project config
+
+**Design › Export › Texture**: pick a texture of the project (or *New texture…*, which creates a PNG in
+the config's texture folder, imported as a sprite or a default texture) and *Export to texture*
+renders the selected layer into it. The texture's file is overwritten in place (PNG, JPG or TGA, by its
+extension), so its GUID, import settings and every reference to it stay; *Fit texture* renders at the
+texture's current width instead of the scale. An export whose pixels didn't change isn't written.
+
+The links live in the **project config** (`Assets/FigEditor/FigEditorConfig.asset`; *File menu ›
+Project Config…*, *Tools › Thinhnv › Fig Editor - Project Config*, or *Create › Thinhnv › Fig Editor
+Config*), meant to be committed so the team shares it. Its Inspector lists the design files with their
+`.fig` path, Figma link and version, and per file the layer → texture links (scale, fit, export, show
+the layer, unlink), with *Open in Fig Editor*, *Update from Figma* (or *Import from Figma* when the
+file isn't there yet), *Export textures* and *Export all textures*. Files imported or updated from Figma
+are recorded automatically, and with *Export after update* their textures are exported again after
+each update. Layers are linked by their Figma id, which stays the same across updates (by name when it
+doesn't). The Figma token stays per user, never in the config.
+
 ## Undo and saving
 
 Canvas edits, the Design panel, renaming, visibility and lock, reordering, creating, duplicating and
@@ -176,6 +197,7 @@ zip members other than `canvas.fig` are kept byte for byte.
 | `FigmaApi.cs`, `FigRestImport.cs` | Figma REST downloads; REST JSON → `.fig` |
 | `FigDefaultSchema.cs`, `FigJson.cs` | The schema written into imported files; a JSON reader |
 | `FigImportWindow.cs`, `FigmaSettings.cs` | Import / update window; the access token preferences |
+| `FigProjectConfig.cs`, `FigProjectConfigEditor.cs`, `FigTextureExport.cs` | The project config and its inspector; exporting layers into textures |
 | `FigTileCache.cs` | Threaded tile cache, lifted drag layer, image decoding |
 | `FigGeometry.cs` | Affine transforms and rectangle helpers |
 | `FigTheme.cs` | Colours, styles and the vector icons |

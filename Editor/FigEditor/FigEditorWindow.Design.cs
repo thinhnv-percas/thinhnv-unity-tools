@@ -1216,18 +1216,148 @@ namespace Thinhnv.UnityTools.FigEditor
             }
 
             SectionHeader("Export");
+            FigProjectConfig config = FigProjectConfig.Instance;
+            FigProjectConfig.TextureTarget target = config?.FindFile(filePath)?.Find(s.Id);
             BeginRow();
-            exportScale = EditorGUILayout.Popup(exportScale, Array.ConvertAll(ExportScales, z => Format(z) + "x"), GUILayout.Width(56));
+            if (target != null)
+            {
+                // A linked texture exports at its own scale.
+                EditorGUI.BeginChangeCheck();
+                float scale = EditorGUILayout.FloatField(new GUIContent("×", "Export scale"), target.scale, GUILayout.Width(56));
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(config, "Export Scale");
+                    target.scale = Mathf.Clamp(scale, 0.01f, 16f);
+                    target.lastHash = null;
+                    config.Save();
+                }
+            }
+            else
+            {
+                exportScale = EditorGUILayout.Popup(exportScale, Array.ConvertAll(ExportScales, z => Format(z) + "x"), GUILayout.Width(56));
+            }
+
             GUILayout.Label("PNG", FigTheme.Dim, GUILayout.Width(32));
-            if (GUILayout.Button("Export " + (string.IsNullOrEmpty(s.Name) ? s.Type.ToLowerInvariant() : s.Name), EditorStyles.miniButton))
+            if (GUILayout.Button(new GUIContent("Export…", "Save a PNG file anywhere"), EditorStyles.miniButton))
             {
                 string id = s.Id;
-                float zoom = ExportScales[exportScale];
+                float zoom = target != null ? target.scale : ExportScales[exportScale];
                 Defer(() => ExportPng(id, zoom));
             }
 
             EndRow();
+
+            // A game texture this layer is exported into (kept in the project config).
+            BeginRow();
+            EditorGUI.BeginChangeCheck();
+            var texture = (Texture2D)EditorGUILayout.ObjectField(new GUIContent("Texture", "The game texture this layer is exported into"), target?.texture, typeof(Texture2D), false);
+            if (EditorGUI.EndChangeCheck() && file != null)
+            {
+                string id = s.Id, name = s.Name;
+                float scale = ExportScales[exportScale];
+                Defer(() => LinkTexture(id, name, texture, scale));
+            }
+
+            EndRow();
+            BeginRow();
+            if (target != null && target.texture != null)
+            {
+                EditorGUI.BeginChangeCheck();
+                bool fit = GUILayout.Toggle(target.matchTextureSize, new GUIContent("Fit texture", "Render at the texture's current width instead of the scale"), EditorStyles.miniButtonLeft);
+                if (EditorGUI.EndChangeCheck())
+                {
+                    Undo.RecordObject(config, "Fit Texture");
+                    target.matchTextureSize = fit;
+                    target.lastHash = null;
+                    config.Save();
+                }
+
+                if (GUILayout.Button(new GUIContent("Export to texture", target.lastExported == null ? "Not exported yet" : "Last exported " + target.lastExported), EditorStyles.miniButtonRight))
+                {
+                    FigProjectConfig.TextureTarget t = target;
+                    Defer(() => ExportToTexture(t));
+                }
+            }
+            else
+            {
+                if (GUILayout.Button(new GUIContent("New texture…", "Create a PNG texture in the project from this layer and link it"), EditorStyles.miniButton))
+                {
+                    string id = s.Id, name = s.Name;
+                    float scale = ExportScales[exportScale];
+                    Defer(() => NewTexture(id, name, scale));
+                }
+            }
+
+            EndRow();
+            if (target?.lastExported != null)
+            {
+                BeginRow();
+                GUILayout.Label("Last exported " + target.lastExported, EditorStyles.miniLabel);
+                EndRow();
+            }
+
             SectionEnd();
+        }
+
+        /// <summary>Link (or unlink, with null) the selected layer to a game texture in the project config.</summary>
+        private void LinkTexture(string id, string name, Texture2D texture, float scale)
+        {
+            FigProjectConfig config = FigProjectConfig.Instance;
+            if (config == null)
+            {
+                if (texture == null || !EditorUtility.DisplayDialog("Fig Editor", "Texture links are kept in a project config asset (" + FigProjectConfig.DefaultPath + "). Create it?", "Create", "Cancel"))
+                {
+                    return;
+                }
+
+                config = FigProjectConfig.GetOrCreate();
+            }
+
+            if (hasUnsavedChanges && texture != null)
+            {
+                // The config refers to the file on disk: save first so exports see these edits.
+                EditorUtility.DisplayDialog("Fig Editor", "The texture is linked. Save the file so exports from the project config include your edits.", "OK");
+            }
+
+            config.SetTarget(filePath, id, name, texture, scale);
+            Repaint();
+        }
+
+        /// <summary>Export the selected layer into its texture from the open (possibly unsaved) file.</summary>
+        private void ExportToTexture(FigProjectConfig.TextureTarget target)
+        {
+            FigProjectConfig config = FigProjectConfig.Instance;
+            FigProjectConfig.DesignFile entry = config?.FindFile(filePath);
+            if (entry == null)
+            {
+                return;
+            }
+
+            FigTextureExport.ExportTargets(config, file, entry, new[] { target }, true);
+            Repaint();
+        }
+
+        /// <summary>Create a texture from the layer in the config's texture folder and link it.</summary>
+        private void NewTexture(string id, string name, float scale)
+        {
+            FigProjectConfig config = FigProjectConfig.Instance;
+            string folder = config != null ? config.textureFolder : "Assets/Textures/Figma";
+            Directory.CreateDirectory(folder);
+            string path = EditorUtility.SaveFilePanelInProject("New texture", SafeFileName(string.IsNullOrEmpty(name) ? "layer" : name), "png",
+                "Where the layer's texture is created", folder);
+            if (string.IsNullOrEmpty(path))
+            {
+                return;
+            }
+
+            Texture2D texture = FigTextureExport.CreateTexture(file, scene, id, scale, path, config == null || config.newTexturesAsSprites);
+            if (texture == null)
+            {
+                return;
+            }
+
+            LinkTexture(id, name, texture, scale);
+            EditorGUIUtility.PingObject(texture);
         }
 
         /// <summary>Render a layer (with its subtree and effects) on transparent and save it as PNG.</summary>
@@ -1245,72 +1375,16 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
-            Rect b = n.SubtreeBounds;
-            int x = Mathf.FloorToInt(b.xMin * zoom), y = Mathf.FloorToInt(b.yMin * zoom);
-            int w = Mathf.Clamp(Mathf.CeilToInt(b.xMax * zoom) - x, 1, 8192), h = Mathf.Clamp(Mathf.CeilToInt(b.yMax * zoom) - y, 1, 8192);
-            var renderer = new FigRenderer();
-            var images = new Dictionary<string, FigImageData>();
-            renderer.Images = hash =>
-            {
-                if (!images.TryGetValue(hash, out FigImageData data))
-                {
-                    data = DecodeForExport(file.Member(FigFile.ImagePrefix + hash)?.Data);
-                    images[hash] = data;
-                }
-
-                return data;
-            };
-
             EditorUtility.DisplayProgressBar("Fig Editor", "Rendering " + n.Name + "…", 0.5f);
             try
             {
-                Color32[] topDown = renderer.RenderOnly(scene.Nodes, new[] { n.Index }, zoom, x, y, w, h);
-                var pixels = new Color32[topDown.Length];
-                for (int row = 0; row < h; row++)
-                {
-                    Array.Copy(topDown, row * w, pixels, (h - 1 - row) * w, w);
-                }
-
-                var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-                tex.SetPixels32(pixels);
-                tex.Apply();
-                File.WriteAllBytes(path, tex.EncodeToPNG());
-                DestroyImmediate(tex);
+                Color32[] pixels = FigTextureExport.Render(file, scene, id, zoom, out int w, out int h);
+                File.WriteAllBytes(path, FigTextureExport.Encode(pixels, w, h, path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? path : path + ".png"));
                 RefreshIfInProject(path);
             }
             finally
             {
                 EditorUtility.ClearProgressBar();
-            }
-        }
-
-        private static FigImageData DecodeForExport(byte[] bytes)
-        {
-            if (bytes == null)
-            {
-                return null;
-            }
-
-            var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            try
-            {
-                if (!tex.LoadImage(bytes, false))
-                {
-                    return null;
-                }
-
-                Color32[] bottomUp = tex.GetPixels32();
-                var topDown = new Color32[bottomUp.Length];
-                for (int y = 0; y < tex.height; y++)
-                {
-                    Array.Copy(bottomUp, (tex.height - 1 - y) * tex.width, topDown, y * tex.width, tex.width);
-                }
-
-                return new FigImageData(tex.width, tex.height, topDown);
-            }
-            finally
-            {
-                DestroyImmediate(tex);
             }
         }
 

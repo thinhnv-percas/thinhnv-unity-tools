@@ -301,6 +301,16 @@ namespace Thinhnv.UnityTools.FigEditor
                 Debug.Log(sb.ToString());
             }
 
+            // The project config records the file (link, version) and refreshes its textures after an update.
+            try
+            {
+                FigProjectConfig.OnFileImported(path, FigmaSource.FromFile(FigFile.Parse(result.Fig)), updatePath != null);
+            }
+            catch (Exception e)
+            {
+                Debug.LogException(e);
+            }
+
             FigEditorWindow.OpenImported(Path.GetFullPath(path), pendingNode, updatePath != null);
             Close();
         }
@@ -308,7 +318,8 @@ namespace Thinhnv.UnityTools.FigEditor
         /// <summary>Where a new import goes: the import folder, named after the file; asks before replacing.</summary>
         private string Target(string name)
         {
-            string folder = string.IsNullOrEmpty(FigmaApi.ImportFolder) ? "Assets/Figma" : FigmaApi.ImportFolder;
+            string configured = FigProjectConfig.Instance != null ? FigProjectConfig.Instance.importFolder : null;
+            string folder = !string.IsNullOrEmpty(configured) ? configured : string.IsNullOrEmpty(FigmaApi.ImportFolder) ? "Assets/Figma" : FigmaApi.ImportFolder;
             string file = SafeName(name) + ".fig";
             string path = Path.Combine(folder, file);
             if (!File.Exists(path))

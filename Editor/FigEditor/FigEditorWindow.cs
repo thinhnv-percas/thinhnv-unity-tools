@@ -221,6 +221,26 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
+        /// <summary>Select the project config in the Inspector, creating it when the project has none.</summary>
+        private static void ShowProjectConfig()
+        {
+            FigProjectConfig config = FigProjectConfig.Instance;
+            if (config == null && !EditorUtility.DisplayDialog("Fig Editor", "Create the project config at " + FigProjectConfig.DefaultPath + "? It keeps the design files, their Figma links and texture exports.", "Create", "Cancel"))
+            {
+                return;
+            }
+
+            config = FigProjectConfig.GetOrCreate();
+            Selection.activeObject = config;
+            EditorGUIUtility.PingObject(config);
+        }
+
+        [MenuItem("Tools/Thinhnv/Fig Editor - Project Config", false, 102)]
+        private static void ProjectConfigMenu()
+        {
+            ShowProjectConfig();
+        }
+
         /// <summary>Fonts were installed or added to the project: index them again and lay the text out again.</summary>
         private void RescanFonts()
         {
@@ -411,6 +431,27 @@ namespace Thinhnv.UnityTools.FigEditor
 
             menu.AddItem(new GUIContent("Figma Access Token…"), false, FigmaSettings.Open);
             menu.AddItem(new GUIContent("Rescan Installed Fonts"), false, () => Defer(RescanFonts));
+            menu.AddSeparator("");
+            menu.AddItem(new GUIContent("Project Config…"), false, () => Defer(ShowProjectConfig));
+            if (file != null)
+            {
+                menu.AddItem(new GUIContent("Add File to Project Config"), false, () => Defer(() =>
+                {
+                    FigProjectConfig.GetOrCreate().AddFile(filePath, Source);
+                    ShowProjectConfig();
+                }));
+            }
+
+            FigProjectConfig.DesignFile linkedFile = FigProjectConfig.Instance?.FindFile(filePath);
+            if (linkedFile != null && linkedFile.textures.Count > 0)
+            {
+                menu.AddItem(new GUIContent("Export Linked Textures (" + linkedFile.textures.Count + ")"), false, () => Defer(() =>
+                    FigTextureExport.ExportTargets(FigProjectConfig.Instance, file, linkedFile, linkedFile.textures, false)));
+            }
+            else
+            {
+                menu.AddDisabledItem(new GUIContent("Export Linked Textures"));
+            }
             foreach (string recent in recentFiles)
             {
                 if (recent != filePath && File.Exists(recent))
