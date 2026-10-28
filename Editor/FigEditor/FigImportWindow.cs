@@ -22,6 +22,21 @@ namespace Thinhnv.UnityTools.FigEditor
         private string updatePath;
         private FigmaSource source;
 
+        // What an update downloads: the whole file, the frames with linked textures, or chosen frames.
+        private int scope;
+        private readonly System.Collections.Generic.List<Frame> frames = new();
+        private readonly System.Collections.Generic.HashSet<string> chosen = new();
+        private readonly System.Collections.Generic.List<string> linkedFrames = new();
+        private Vector2 framesScroll;
+
+        private struct Frame
+        {
+            public string Id;
+            public string Label;
+            public bool PageStart;
+            public string Page;
+        }
+
         private Task<FigmaDownload> task;
         private CancellationTokenSource cancel;
         private string step;
@@ -50,8 +65,68 @@ namespace Thinhnv.UnityTools.FigEditor
             w.updatePath = path;
             w.source = from;
             w.link = from.Url ?? from.FileKey;
-            w.minSize = new Vector2(460, 220);
+            w.minSize = new Vector2(460, 300);
+            w.ReadFrames();
             w.ShowUtility();
+        }
+
+        /// <summary>The top-level frames of the current file (to update some of them), and those with linked textures.</summary>
+        private void ReadFrames()
+        {
+            frames.Clear();
+            linkedFrames.Clear();
+            if (string.IsNullOrEmpty(updatePath) || !File.Exists(updatePath))
+            {
+                return;
+            }
+
+            FigFile local;
+            try
+            {
+                local = FigFile.Load(updatePath);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            foreach (FigNode root in local.Roots)
+            {
+                foreach (FigNode page in root.Type == "DOCUMENT" ? root.Children : new System.Collections.Generic.List<FigNode> { root })
+                {
+                    if (page.Type != "CANVAS")
+                    {
+                        continue;
+                    }
+
+                    bool first = true;
+                    foreach (FigNode f in page.Children)
+                    {
+                        frames.Add(new Frame { Id = f.Id, Label = string.IsNullOrEmpty(f.Name) ? f.Type : f.Name, PageStart = first, Page = page.Name });
+                        first = false;
+                    }
+                }
+            }
+
+            FigProjectConfig.DesignFile entry = FigProjectConfig.Instance?.FindFile(updatePath);
+            if (entry != null)
+            {
+                foreach (FigProjectConfig.TextureTarget t in entry.textures)
+                {
+                    FigNode n = local.Find(t.layerId);
+                    while (n?.Parent != null && n.Parent.Type != "CANVAS")
+                    {
+                        n = n.Parent;
+                    }
+
+                    if (n != null && n.Parent != null && !linkedFrames.Contains(n.Id))
+                    {
+                        linkedFrames.Add(n.Id);
+                    }
+                }
+            }
+
+            scope = linkedFrames.Count > 0 ? 1 : 0;
         }
 
         private static string TryClipboardLink()
@@ -95,7 +170,11 @@ namespace Thinhnv.UnityTools.FigEditor
                     EditorGUILayout.LabelField("Layers", source.NodeIds);
                 }
 
-                EditorGUILayout.HelpBox("Updating replaces this file with Figma's current version. Edits made here since the import are replaced; a .bak copy of the file is kept.", MessageType.None);
+                DrawScope();
+                EditorGUILayout.HelpBox(
+                    "Figma's API has no \"changes only\" download. What is skipped: everything when Figma's version is unchanged, " +
+                    "the frames not chosen, and every image this file already has. Edits made here to the updated part are replaced; a .bak copy is kept.",
+                    MessageType.None);
                 force = EditorGUILayout.ToggleLeft("Download even when Figma's version hasn't changed", force);
             }
             else
@@ -186,10 +265,62 @@ namespace Thinhnv.UnityTools.FigEditor
             EditorGUILayout.Space(8);
         }
 
+        private void DrawScope()
+        {
+            bool canMerge = frames.Count > 0;
+            string[] labels =
+            {
+                "Whole file",
+                "Frames with linked textures (" + linkedFrames.Count + ")",
+                "Chosen frames (" + chosen.Count + ")",
+            };
+
+            using (new EditorGUI.DisabledScope(!canMerge))
+            {
+                scope = GUILayout.Toolbar(canMerge ? scope : 0, labels, EditorStyles.miniButton);
+            }
+
+            if (scope == 1 && linkedFrames.Count == 0)
+            {
+                EditorGUILayout.LabelField("No textures are linked to this file in the project config.", EditorStyles.miniLabel);
+            }
+
+            if (scope != 2)
+            {
+                return;
+            }
+
+            framesScroll = EditorGUILayout.BeginScrollView(framesScroll, GUILayout.MinHeight(80), GUILayout.MaxHeight(180));
+            foreach (Frame f in frames)
+            {
+                if (f.PageStart)
+                {
+                    EditorGUILayout.LabelField(f.Page, EditorStyles.miniBoldLabel);
+                }
+
+                bool on = chosen.Contains(f.Id);
+                bool now = EditorGUILayout.ToggleLeft("   " + f.Label, on);
+                if (now != on)
+                {
+                    if (now)
+                    {
+                        chosen.Add(f.Id);
+                    }
+                    else
+                    {
+                        chosen.Remove(f.Id);
+                    }
+                }
+            }
+
+            EditorGUILayout.EndScrollView();
+        }
+
         private static string Describe(FigmaSource s)
         {
             string when = s.ImportedAt ?? "?";
-            return string.IsNullOrEmpty(s.Version) ? when : when + " · version " + s.Version;
+            string text = string.IsNullOrEmpty(s.Version) ? when : when + " · version " + s.Version;
+            return string.IsNullOrEmpty(s.PartialVersion) ? text : text + " · some frames at " + s.PartialVersion;
         }
 
         private void Start()
@@ -214,7 +345,28 @@ namespace Thinhnv.UnityTools.FigEditor
             cancel = new CancellationTokenSource();
             step = "Starting…";
             progress = 0;
-            task = FigmaApi.Download(target, only, FigmaApi.Token, updatePath != null && !force ? source.Version : null, (s, p) =>
+            var options = new FigmaDownloadOptions { OnlyLinkedLayers = only, SkipIfVersion = updatePath != null && !force ? source.Version : null };
+            if (updatePath != null && File.Exists(updatePath))
+            {
+                options.Existing = File.ReadAllBytes(updatePath);
+                System.Collections.Generic.List<string> ids = scope == 1 ? new System.Collections.Generic.List<string>(linkedFrames) :
+                    scope == 2 ? new System.Collections.Generic.List<string>(chosen) : null;
+                if (scope != 0 && (ids == null || ids.Count == 0))
+                {
+                    error = "Choose at least one frame, or update the whole file.";
+                    return;
+                }
+
+                options.MergeIds = ids;
+                if (ids != null && !force)
+                {
+                    // The same frames updated before: nothing to do while Figma's version is the one they have.
+                    var before = new System.Collections.Generic.HashSet<string>((source.PartialIds ?? "").Split(','));
+                    options.SkipIfVersion = before.SetEquals(ids) && !string.IsNullOrEmpty(source.PartialVersion) ? source.PartialVersion : source.Version;
+                }
+            }
+
+            task = FigmaApi.Download(target, options, FigmaApi.Token, (s, p) =>
             {
                 step = s;
                 progress = p;
@@ -290,9 +442,12 @@ namespace Thinhnv.UnityTools.FigEditor
                 AssetDatabase.ImportAsset(ProjectRelative(path));
             }
 
+            string what = result.Merged != null ? $"updated {result.Merged.Count} frame(s) of " : updatePath != null ? "updated " : "imported ";
+            Debug.Log($"Fig Editor: {what}{Path.GetFileName(path)} from Figma (version {result.Version}): {FigUtil.FormatSize(result.BytesDownloaded)} downloaded, " +
+                      $"{result.ImagesDownloaded} image(s) downloaded, {result.ImagesReused} reused from the file.");
             if (result.Warnings.Count > 0)
             {
-                var sb = new StringBuilder("Fig Editor: imported " + Path.GetFileName(path) + " from Figma with notes:");
+                var sb = new StringBuilder("Fig Editor: " + what + Path.GetFileName(path) + " from Figma with notes:");
                 foreach (string w in result.Warnings)
                 {
                     sb.Append("\n• ").Append(w);

@@ -159,7 +159,20 @@ namespace Thinhnv.UnityTools.FigEditor
                 {
                     if (GUILayout.Button(exists ? "Update from Figma" : "Import from Figma"))
                     {
-                        var source = new FigmaSource
+                        FigmaSource fromFile = null;
+                        if (exists)
+                        {
+                            try
+                            {
+                                fromFile = FigmaSource.FromFile(FigFile.Load(f.path));
+                            }
+                            catch (System.Exception)
+                            {
+                                fromFile = null;
+                            }
+                        }
+
+                        var source = fromFile ?? new FigmaSource
                         {
                             Url = f.figmaUrl,
                             FileKey = fl.FileKey,
@@ -168,6 +181,9 @@ namespace Thinhnv.UnityTools.FigEditor
                             Version = exists ? f.version : null,
                             ImportedAt = f.lastUpdated,
                         };
+                        // The config's link wins (it may have been edited here).
+                        source.Url = f.figmaUrl;
+                        source.FileKey = fl.FileKey;
                         FigImportWindow.ShowUpdate(f.path, source);
                     }
                 }

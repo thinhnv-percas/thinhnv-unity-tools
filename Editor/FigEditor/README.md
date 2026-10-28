@@ -123,9 +123,20 @@ the import folder (default `Assets/Figma`). Paste any figma.com file / design / 
 link or a bare file key; with a `node-id` in the link you can fetch only that layer (with its page), and
 the editor opens on it.
 
-**Update from Figma** (file menu, or the button next to the file name) fetches the file again from the
-link stored in its `meta.json` and replaces it; it first asks Figma for the file's version and does
-nothing when it hasn't changed. The previous file is kept as `.bak`.
+**Update from Figma** (file menu, the button next to the file name, or the project config) fetches the
+file again from the link stored in its `meta.json`. Figma's API has no "changes since" download, so an
+update skips what it can:
+
+- nothing is downloaded when Figma's version hasn't changed (a cheap version check comes first);
+- images the file already has aren't downloaded again (Figma image refs are content hashes; the import
+  records which member each ref is);
+- **Frames with linked textures** or **Chosen frames** fetch only those top-level frames
+  (`GET /v1/files/:key/nodes`) and merge them into the file in place, keeping every other layer and the
+  thumbnail; *Whole file* rebuilds it all. A layer moved into an updated frame leaves its old place;
+  a frame deleted in Figma is reported and kept.
+
+The previous file is kept as `.bak`, and the console says how much was downloaded and how many images
+were reused.
 
 The API needs a **personal access token**: in Figma, *Settings › Security › Personal access tokens*,
 scope *File content: read-only*. Paste it in **Preferences › Thinhnv › Fig Editor** (*Test* checks it).

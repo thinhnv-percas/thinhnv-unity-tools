@@ -27,6 +27,72 @@ namespace Thinhnv.UnityTools.FigEditor
             return value;
         }
 
+        /// <summary>Write a value read by <see cref="Parse"/> (dictionaries, lists, numbers, strings, bools, null) back as JSON.</summary>
+        public static string Write(object value)
+        {
+            var sb = new StringBuilder();
+            Write(sb, value);
+            return sb.ToString();
+        }
+
+        private static void Write(StringBuilder sb, object value)
+        {
+            if (value == null)
+            {
+                sb.Append("null");
+            }
+            else if (value is string s)
+            {
+                FigUtil.JsonString(sb, s);
+            }
+            else if (value is bool b)
+            {
+                sb.Append(b ? "true" : "false");
+            }
+            else if (value is double d)
+            {
+                sb.Append(double.IsNaN(d) || double.IsInfinity(d) ? "0" : d.ToString("R", CultureInfo.InvariantCulture));
+            }
+            else if (value is Dictionary<string, object> obj)
+            {
+                sb.Append('{');
+                bool first = true;
+                foreach (KeyValuePair<string, object> pair in obj)
+                {
+                    if (!first)
+                    {
+                        sb.Append(',');
+                    }
+
+                    first = false;
+                    FigUtil.JsonString(sb, pair.Key);
+                    sb.Append(':');
+                    Write(sb, pair.Value);
+                }
+
+                sb.Append('}');
+            }
+            else if (value is List<object> list)
+            {
+                sb.Append('[');
+                for (int i = 0; i < list.Count; i++)
+                {
+                    if (i > 0)
+                    {
+                        sb.Append(',');
+                    }
+
+                    Write(sb, list[i]);
+                }
+
+                sb.Append(']');
+            }
+            else
+            {
+                sb.Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+            }
+        }
+
         // ─── Reading helpers ─────────────────────────────────────────────────────
 
         public static Dictionary<string, object> Obj(object o, string key)

@@ -20,6 +20,11 @@ namespace Thinhnv.UnityTools.FigEditor
         public string LastModified;
         public string ImportedAt;
 
+        /// <summary>Set by a partial update: the Figma version some frames were last updated to, and which.</summary>
+        public string PartialVersion;
+
+        public string PartialIds;
+
         public static FigmaSource FromFile(FigFile file)
         {
             FigZipEntry meta = file?.Members.Find(m => m.Name == FigFile.MetaMember);
@@ -46,6 +51,8 @@ namespace Thinhnv.UnityTools.FigEditor
                     Version = FigJson.Str(s, "version"),
                     LastModified = FigJson.Str(s, "lastModified"),
                     ImportedAt = FigJson.Str(s, "importedAt"),
+                    PartialVersion = FigJson.Str(s, "partialVersion"),
+                    PartialIds = FigJson.Str(s, "partialIds"),
                 };
             }
             catch (FormatException)
@@ -64,6 +71,8 @@ namespace Thinhnv.UnityTools.FigEditor
             Field(sb, "version", Version, false);
             Field(sb, "lastModified", LastModified, false);
             Field(sb, "importedAt", ImportedAt, false);
+            Field(sb, "partialVersion", PartialVersion, false);
+            Field(sb, "partialIds", PartialIds, false);
             sb.Append('}');
         }
 
@@ -102,7 +111,10 @@ namespace Thinhnv.UnityTools.FigEditor
     {
         private const uint FreshSession = 60000;
 
-        private readonly KiwiSchema schema = FigDefaultSchema.Schema;
+        private readonly KiwiSchema schema;
+
+        /// <summary>Blob indices start here (after the blobs a merged-into file already has).</summary>
+        private int blobBase;
         private readonly List<Dictionary<string, object>> nodes = new();
         private readonly List<object> blobs = new();
         private readonly Dictionary<string, byte[]> imageHashes = new();
@@ -110,9 +122,10 @@ namespace Thinhnv.UnityTools.FigEditor
         private readonly HashSet<string> warned = new();
         private uint freshLocal = 1;
 
-        private FigRestImport(List<string> warnings)
+        private FigRestImport(List<string> warnings, KiwiSchema schema = null)
         {
             this.warnings = warnings;
+            this.schema = schema ?? FigDefaultSchema.Schema;
         }
 
         /// <summary>
@@ -160,7 +173,7 @@ namespace Thinhnv.UnityTools.FigEditor
             byte[] canvas = Canvas(import.schema, messageDef, value);
 
             var entries = new List<FigZipEntry> { new FigZipEntry(FigFile.CanvasMember, canvas) };
-            entries.Add(new FigZipEntry(FigFile.MetaMember, Encoding.UTF8.GetBytes(Meta(file, source))));
+            entries.Add(new FigZipEntry(FigFile.MetaMember, Encoding.UTF8.GetBytes(Meta(file, source, import.imageHashes))));
             if (thumbnail != null && thumbnail.Length > 0)
             {
                 entries.Add(new FigZipEntry(FigFile.ThumbnailMember, thumbnail));
@@ -187,8 +200,73 @@ namespace Thinhnv.UnityTools.FigEditor
             return output.ToArray();
         }
 
-        private static string Meta(object file, FigmaSource source)
+        /// <summary>The meta.json key mapping Figma image refs to the file's image members (so updates reuse them).</summary>
+        public const string ImageMapKey = "thinhnv_figma_images";
+
+        /// <summary>Figma image ref → image member hash, as recorded by an import (empty when none).</summary>
+        public static Dictionary<string, string> ImageMap(FigFile file)
         {
+            var map = new Dictionary<string, string>();
+            FigZipEntry meta = file?.Members.Find(m => m.Name == FigFile.MetaMember);
+            if (meta == null)
+            {
+                return map;
+            }
+
+            try
+            {
+                Dictionary<string, object> refs = FigJson.Obj(FigJson.Parse(Encoding.UTF8.GetString(meta.Data)), ImageMapKey);
+                if (refs != null)
+                {
+                    foreach (KeyValuePair<string, object> pair in refs)
+                    {
+                        if (pair.Value is string hex)
+                        {
+                            map[pair.Key] = hex;
+                        }
+                    }
+                }
+            }
+            catch (FormatException)
+            {
+                // No map: refs are matched by name only.
+            }
+
+            return map;
+        }
+
+        private static Dictionary<string, object> ImageMapJson(Dictionary<string, byte[]> hashes)
+        {
+            var refs = new Dictionary<string, object>();
+            foreach (KeyValuePair<string, byte[]> pair in hashes)
+            {
+                refs[pair.Key] = FigUtil.Hex(pair.Value);
+            }
+
+            return refs;
+        }
+
+        private static string Meta(object file, FigmaSource source, Dictionary<string, byte[]> imageHashes)
+        {
+            if (imageHashes.Count > 0)
+            {
+                var meta = new Dictionary<string, object>
+                {
+                    ["file_name"] = FigJson.Str(file, "name") ?? source?.Name ?? "Figma file",
+                    ["exported_at"] = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture),
+                };
+
+                if (source != null)
+                {
+                    var src = new StringBuilder();
+                    source.WriteJson(src);
+                    meta[FigmaSource.MetaKey] = FigJson.Parse(src.ToString());
+                }
+
+                meta[ImageMapKey] = ImageMapJson(imageHashes);
+                return FigJson.Write(meta);
+            }
+
             var sb = new StringBuilder("{");
             FigUtil.JsonString(sb, "file_name");
             sb.Append(':');
@@ -207,6 +285,228 @@ namespace Thinhnv.UnityTools.FigEditor
 
             sb.Append('}');
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Update some layers of an existing file: each of <paramref name="ids"/> is replaced (with its
+        /// subtree) by its current version from a <c>GET /v1/files/:key/nodes</c> response, in place
+        /// (same parent and position); everything else in the file is kept as it is. New images are
+        /// added; images already in the file are reused. Returns the new file's bytes.
+        /// </summary>
+        public static byte[] Merge(FigFile local, object nodesResponse, IList<string> ids, IDictionary<string, byte[]> images, FigmaSource source, List<string> warnings)
+        {
+            warnings ??= new List<string>();
+            var import = new FigRestImport(warnings, local.Schema);
+            KiwiDef nodeDef = local.Schema.Find("NodeChange");
+            KiwiField blobsField = local.MessageDef.FieldByName("blobs");
+            if (nodeDef == null || blobsField?.TypeDef == null)
+            {
+                throw new FormatException("This file's schema has no node changes to update.");
+            }
+
+            List<KiwiValue> changes = local.NodeChanges;
+            KiwiValue blobsValue = local.Message.Get("blobs");
+            if (blobsValue == null)
+            {
+                blobsValue = KiwiValue.FromArray(new List<KiwiValue>());
+                local.Message.Set("blobs", blobsValue);
+            }
+
+            import.blobBase = blobsValue.Items.Count;
+            // Fresh ids (layers inside instances) continue after the ones the file already has.
+            foreach (KiwiValue c in changes)
+            {
+                KiwiValue g = c.Get("guid");
+                if (g != null && (uint)(g.Get("sessionID")?.Uint ?? 0) == FreshSession)
+                {
+                    import.freshLocal = Math.Max(import.freshLocal, (uint)(g.Get("localID")?.Uint ?? 0) + 1);
+                }
+            }
+
+            // Images: what the file has is reused; downloads are hashed like a full import.
+            var have = new HashSet<string>();
+            foreach (FigZipEntry m in local.Members)
+            {
+                if (m.Name.StartsWith(FigFile.ImagePrefix, StringComparison.Ordinal))
+                {
+                    have.Add(m.Name.Substring(FigFile.ImagePrefix.Length));
+                }
+            }
+
+            if (images != null)
+            {
+                foreach (KeyValuePair<string, byte[]> pair in images)
+                {
+                    if (pair.Value == null || pair.Value.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    byte[] hash = FigUtil.Sha1(pair.Value);
+                    import.imageHashes[pair.Key] = hash;
+                    string hex = FigUtil.Hex(hash);
+                    if (have.Add(hex))
+                    {
+                        local.Members.Add(new FigZipEntry(FigFile.ImagePrefix + hex, pair.Value));
+                    }
+                }
+            }
+
+            foreach (KeyValuePair<string, string> pair in ImageMap(local))
+            {
+                if (have.Contains(pair.Value) && !import.imageHashes.ContainsKey(pair.Key))
+                {
+                    import.imageHashes[pair.Key] = FigUtil.FromHex(pair.Value);
+                }
+            }
+
+            foreach (string hex in have)
+            {
+                if (!import.imageHashes.ContainsKey(hex))
+                {
+                    import.imageHashes[hex] = FigUtil.FromHex(hex);
+                }
+            }
+
+            Dictionary<string, object> nodes = FigJson.Obj(nodesResponse, "nodes") ?? new Dictionary<string, object>();
+            var removed = new HashSet<string>();
+            var updated = new List<string>();
+            foreach (string id in ids)
+            {
+                Dictionary<string, object> document = FigJson.Obj(nodes.TryGetValue(id, out object entry) ? entry : null, "document");
+                FigNode target = local.Find(id);
+                if (document == null)
+                {
+                    warnings.Add($"Layer {id}{(target != null ? " (" + target.Name + ")" : "")} is no longer in the Figma file; kept as it was.");
+                    continue;
+                }
+
+                if (target == null || target.Parent == null)
+                {
+                    warnings.Add($"Layer {id} ({FigJson.Str(document, "name")}) isn't in this file yet: update the whole file to add it.");
+                    continue;
+                }
+
+                // Placement: the parent's page transform, and the frame REST measures group children from.
+                FigAffine parentWorld = FigAffine.Identity, frameWorld = FigAffine.Identity;
+                bool frameFound = false;
+                var chain = new List<FigNode>();
+                for (FigNode p = target.Parent; p != null && p.Type != "CANVAS" && p.Type != "DOCUMENT"; p = p.Parent)
+                {
+                    chain.Insert(0, p);
+                }
+
+                foreach (FigNode p in chain)
+                {
+                    parentWorld = parentWorld.Then(FigAffine.FromMatrix(p.Change.Get("transform")));
+                }
+
+                for (int k = chain.Count - 1; k >= 0 && !frameFound; k--)
+                {
+                    if (chain[k].Type == "FRAME" || chain[k].Type == "SYMBOL" || chain[k].Type == "SECTION" || chain[k].Type == "INSTANCE")
+                    {
+                        frameFound = true;
+                        frameWorld = FigAffine.Identity;
+                        for (int m = 0; m <= k; m++)
+                        {
+                            frameWorld = frameWorld.Then(FigAffine.FromMatrix(chain[m].Change.Get("transform")));
+                        }
+                    }
+                }
+
+                KiwiValue parentGuid = target.Change.Get("parentIndex")?.Get("guid");
+                var parentDict = new Dictionary<string, object>
+                {
+                    ["sessionID"] = (uint)(parentGuid?.Get("sessionID")?.Uint ?? 0),
+                    ["localID"] = (uint)(parentGuid?.Get("localID")?.Uint ?? 0),
+                };
+
+                int first = import.nodes.Count;
+                import.Layer(document, parentDict, 0, parentWorld, frameWorld);
+                // The layer keeps its place among its siblings.
+                ((Dictionary<string, object>)import.nodes[first]["parentIndex"])["position"] = target.Position;
+                CollectSubtree(target, removed);
+                updated.Add(id);
+            }
+
+            if (updated.Count > 0)
+            {
+                // A layer moved into an updated frame from elsewhere leaves its old place.
+                foreach (Dictionary<string, object> n in import.nodes)
+                {
+                    var g = (Dictionary<string, object>)n["guid"];
+                    FigNode moved = local.Find(Convert.ToUInt32(g["sessionID"]) + ":" + Convert.ToUInt32(g["localID"]));
+                    if (moved != null && !removed.Contains(moved.Id))
+                    {
+                        CollectSubtree(moved, removed);
+                    }
+                }
+
+                changes.RemoveAll(c => removed.Contains(FigUtil.GuidString(c.Get("guid"))));
+                foreach (Dictionary<string, object> n in import.nodes)
+                {
+                    changes.Add(import.Object(nodeDef, n));
+                }
+
+                foreach (object b in import.blobs)
+                {
+                    blobsValue.Items.Add(import.Object(blobsField.TypeDef, (Dictionary<string, object>)b));
+                }
+            }
+
+            // meta.json: the partial update's version, other keys kept.
+            FigZipEntry meta = local.Members.Find(m => m.Name == FigFile.MetaMember);
+            Dictionary<string, object> metaJson = null;
+            try
+            {
+                metaJson = meta != null ? FigJson.Parse(Encoding.UTF8.GetString(meta.Data)) as Dictionary<string, object> : null;
+            }
+            catch (FormatException)
+            {
+                metaJson = null;
+            }
+
+            metaJson ??= new Dictionary<string, object>();
+            if (source != null)
+            {
+                var sb = new StringBuilder();
+                source.WriteJson(sb);
+                metaJson[FigmaSource.MetaKey] = FigJson.Parse(sb.ToString());
+            }
+
+            Dictionary<string, object> refsJson = ImageMapJson(import.imageHashes);
+            foreach (string hex in have)
+            {
+                // Members named by their own hash map to themselves: only real refs are kept.
+                if (refsJson.TryGetValue(hex, out object v) && (string)v == hex && !(FigJson.Obj(metaJson, ImageMapKey)?.ContainsKey(hex) ?? false))
+                {
+                    refsJson.Remove(hex);
+                }
+            }
+
+            metaJson[ImageMapKey] = refsJson;
+            byte[] metaBytes = Encoding.UTF8.GetBytes(FigJson.Write(metaJson));
+            if (meta != null)
+            {
+                local.Members[local.Members.IndexOf(meta)] = new FigZipEntry(FigFile.MetaMember, metaBytes);
+            }
+            else
+            {
+                local.Members.Add(new FigZipEntry(FigFile.MetaMember, metaBytes));
+            }
+
+            local.IsArchive = true;
+            local.RebuildIndex();
+            return local.Build();
+        }
+
+        private static void CollectSubtree(FigNode node, HashSet<string> ids)
+        {
+            ids.Add(node.Id);
+            foreach (FigNode c in node.Children)
+            {
+                CollectSubtree(c, ids);
+            }
         }
 
         private void Warn(string message)
@@ -828,7 +1128,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 paths.Add(new Dictionary<string, object>
                 {
                     ["windingRule"] = FigJson.Str(o, "windingRule") == "EVENODD" ? "ODD" : "NONZERO",
-                    ["commandsBlob"] = (uint)(blobs.Count - 1),
+                    ["commandsBlob"] = (uint)(blobBase + blobs.Count - 1),
                     ["styleID"] = 0u,
                 });
             }

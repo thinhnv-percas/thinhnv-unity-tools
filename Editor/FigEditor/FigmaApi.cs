@@ -78,6 +78,31 @@ namespace Thinhnv.UnityTools.FigEditor
         public string LastModified;
         public bool UpToDate;
         public readonly List<string> Warnings = new();
+
+        /// <summary>Images taken from the existing file instead of downloaded, and downloaded.</summary>
+        public int ImagesReused, ImagesDownloaded;
+
+        /// <summary>Bytes received from Figma (JSON, images, thumbnail).</summary>
+        public long BytesDownloaded;
+
+        /// <summary>Layers merged into the existing file (a partial update), or null for a whole file.</summary>
+        public List<string> Merged;
+    }
+
+    /// <summary>How to download: a whole file or some layers merged into the existing one.</summary>
+    public sealed class FigmaDownloadOptions
+    {
+        /// <summary>Fetch only the link's <c>node-id</c> layers (with their pages): a first import of part of a file.</summary>
+        public bool OnlyLinkedLayers;
+
+        /// <summary>Nothing is downloaded when Figma's file version is still this one.</summary>
+        public string SkipIfVersion;
+
+        /// <summary>The current .fig, whose images are reused (and which partial updates merge into).</summary>
+        public byte[] Existing;
+
+        /// <summary>Update only these layers (top-level frames, usually), merged into <see cref="Existing"/>.</summary>
+        public List<string> MergeIds;
     }
 
     public sealed class FigmaException : Exception
@@ -181,8 +206,19 @@ namespace Thinhnv.UnityTools.FigEditor
         /// <paramref name="skipIfVersion"/> matches Figma's current version nothing is downloaded and the
         /// result says <see cref="FigmaDownload.UpToDate"/>.
         /// </summary>
-        public static async Task<FigmaDownload> Download(FigmaLink link, bool onlyLinkedLayers, string token, string skipIfVersion,
+        public static Task<FigmaDownload> Download(FigmaLink link, bool onlyLinkedLayers, string token, string skipIfVersion,
             Action<string, float> progress, CancellationToken cancel)
+        {
+            return Download(link, new FigmaDownloadOptions { OnlyLinkedLayers = onlyLinkedLayers, SkipIfVersion = skipIfVersion }, token, progress, cancel);
+        }
+
+        /// <summary>
+        /// Download <paramref name="link"/> as a <c>.fig</c>, or (with <see cref="FigmaDownloadOptions.MergeIds"/>)
+        /// only some layers merged into the existing file. Figma's API has no "changes since" call, so what
+        /// can be skipped is: everything when the version didn't change, the layers not asked for, and
+        /// every image the existing file already has (images are named by their content hash).
+        /// </summary>
+        public static async Task<FigmaDownload> Download(FigmaLink link, FigmaDownloadOptions options, string token, Action<string, float> progress, CancellationToken cancel)
         {
             if (string.IsNullOrEmpty(token))
             {
@@ -191,7 +227,27 @@ namespace Thinhnv.UnityTools.FigEditor
 
             var result = new FigmaDownload();
             string key = Uri.EscapeDataString(link.FileKey);
+            bool onlyLinkedLayers = options.OnlyLinkedLayers;
+            string skipIfVersion = options.SkipIfVersion;
+            bool merge = options.MergeIds != null && options.MergeIds.Count > 0 && options.Existing != null;
             string ids = onlyLinkedLayers && !string.IsNullOrEmpty(link.NodeIds) ? "&ids=" + Uri.EscapeDataString(link.NodeIds) : "";
+            FigFile existing = null;
+            if (options.Existing != null)
+            {
+                try
+                {
+                    existing = await Task.Run(() => FigFile.Parse(options.Existing), cancel);
+                }
+                catch (FormatException)
+                {
+                    existing = null;
+                }
+            }
+
+            if (merge && existing == null)
+            {
+                throw new FigmaException("The current file can't be read, so layers can't be merged into it: update the whole file.");
+            }
 
             if (!string.IsNullOrEmpty(skipIfVersion))
             {
@@ -207,18 +263,58 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            progress?.Invoke("Reading the file from Figma…", 0.05f);
-            Response fileResponse = await Checked(BaseUrl + "/v1/files/" + key + "?geometry=paths" + ids, token, cancel);
-            progress?.Invoke("Reading the layers…", 0.35f);
-            object file = await Task.Run(() => FigJson.Parse(Encoding.UTF8.GetString(fileResponse.Body)), cancel);
+            object file;
+            if (merge)
+            {
+                progress?.Invoke($"Reading {options.MergeIds.Count} layer(s) from Figma…", 0.05f);
+                Response nodesResponse = await Checked(BaseUrl + "/v1/files/" + key + "/nodes?geometry=paths&ids=" + Uri.EscapeDataString(string.Join(",", options.MergeIds)), token, cancel);
+                result.BytesDownloaded += nodesResponse.Body.Length;
+                file = await Task.Run(() => FigJson.Parse(Encoding.UTF8.GetString(nodesResponse.Body)), cancel);
+                result.Merged = new List<string>(options.MergeIds);
+            }
+            else
+            {
+                progress?.Invoke("Reading the file from Figma…", 0.05f);
+                Response fileResponse = await Checked(BaseUrl + "/v1/files/" + key + "?geometry=paths" + ids, token, cancel);
+                result.BytesDownloaded += fileResponse.Body.Length;
+                progress?.Invoke("Reading the layers…", 0.35f);
+                file = await Task.Run(() => FigJson.Parse(Encoding.UTF8.GetString(fileResponse.Body)), cancel);
+            }
+
             result.Name = FigJson.Str(file, "name") ?? link.FileKey;
             result.Version = FigJson.Str(file, "version");
             result.LastModified = FigJson.Str(file, "lastModified");
 
-            // Image fills: their refs, then where to download them.
+            // Image fills: their refs; the ones the existing file has are reused, the rest downloaded.
             var refs = new HashSet<string>();
-            CollectImageRefs(FigJson.Obj(file, "document"), refs);
+            if (merge)
+            {
+                foreach (object entry in (FigJson.Obj(file, "nodes") ?? new Dictionary<string, object>()).Values)
+                {
+                    CollectImageRefs(FigJson.Obj(entry, "document"), refs);
+                }
+            }
+            else
+            {
+                CollectImageRefs(FigJson.Obj(file, "document"), refs);
+            }
+
             var images = new Dictionary<string, byte[]>();
+            if (existing != null)
+            {
+                Dictionary<string, string> map = FigRestImport.ImageMap(existing);
+                foreach (string r in new List<string>(refs))
+                {
+                    FigZipEntry have = existing.Member(FigFile.ImagePrefix + (map.TryGetValue(r, out string hex) ? hex : r)) ?? existing.Member(FigFile.ImagePrefix + r);
+                    if (have != null && have.Data != null && have.Data.Length > 0)
+                    {
+                        images[r] = have.Data;
+                        refs.Remove(r);
+                        result.ImagesReused++;
+                    }
+                }
+            }
+
             if (refs.Count > 0)
             {
                 progress?.Invoke("Finding the images…", 0.4f);
@@ -249,6 +345,8 @@ namespace Thinhnv.UnityTools.FigEditor
                         if (got[i].Status == 200 && got[i].Body != null && got[i].Body.Length > 0)
                         {
                             images[wanted[start + i].Key] = got[i].Body;
+                            result.ImagesDownloaded++;
+                            result.BytesDownloaded += got[i].Body.Length;
                         }
                         else
                         {
@@ -268,11 +366,12 @@ namespace Thinhnv.UnityTools.FigEditor
 
             byte[] thumbnail = null;
             string thumbnailUrl = FigJson.Str(file, "thumbnailUrl");
-            if (!string.IsNullOrEmpty(thumbnailUrl))
+            if (!string.IsNullOrEmpty(thumbnailUrl) && !merge)
             {
                 progress?.Invoke("Downloading the thumbnail…", 0.87f);
                 Response t = await Get(thumbnailUrl, null, cancel);
                 thumbnail = t.Status == 200 ? t.Body : null;
+                result.BytesDownloaded += thumbnail?.Length ?? 0;
             }
 
             progress?.Invoke("Building the .fig file…", 0.9f);
@@ -288,7 +387,23 @@ namespace Thinhnv.UnityTools.FigEditor
             };
 
             List<string> warnings = result.Warnings;
-            result.Fig = await Task.Run(() => FigRestImport.Build(file, images, thumbnail, source, warnings), cancel);
+            if (merge)
+            {
+                // The file as a whole keeps its last full version; the merged layers record theirs.
+                FigmaSource before = FigmaSource.FromFile(existing);
+                source.Version = before?.Version;
+                source.LastModified = before?.LastModified;
+                source.NodeIds = before?.NodeIds;
+                source.Url = before?.Url ?? source.Url;
+                source.PartialVersion = result.Version;
+                source.PartialIds = string.Join(",", options.MergeIds);
+                List<string> mergeIds = options.MergeIds;
+                result.Fig = await Task.Run(() => FigRestImport.Merge(existing, file, mergeIds, images, source, warnings), cancel);
+            }
+            else
+            {
+                result.Fig = await Task.Run(() => FigRestImport.Build(file, images, thumbnail, source, warnings), cancel);
+            }
             progress?.Invoke("Done", 1f);
             return result;
         }
