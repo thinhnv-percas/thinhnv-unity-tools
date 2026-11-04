@@ -214,7 +214,11 @@ namespace Thinhnv.UnityTools.FigEditor
         public void Save()
         {
             EditorUtility.SetDirty(this);
+#if UNITY_2021_2_OR_NEWER
             AssetDatabase.SaveAssetIfDirty(this);
+#else
+            AssetDatabase.SaveAssets();
+#endif
         }
 
         /// <summary>A file was imported or updated from Figma: record it, and refresh its textures when asked to.</summary>

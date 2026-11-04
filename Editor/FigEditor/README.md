@@ -170,6 +170,25 @@ are recorded automatically, and with *Export after update* their textures are ex
 each update. Layers are linked by their Figma id, which stays the same across updates (by name when it
 doesn't). The Figma token stays per user, never in the config.
 
+## Agents
+
+Coding agents (Claude Code and others) can drive the Fig Editor in the open editor: find layers,
+render them to PNG to look at, export them into textures, update from Figma, find which prefabs /
+scenes / materials use a texture, and assign sprites to Image, SpriteRenderer or RawImage components.
+
+- **Agent bridge** (`FigAgentBridge`): a JSON request written to `Temp/FigAgent/requests/` runs on the
+  editor's main thread; its JSON result appears in `Temp/FigAgent/results/`. Commands: `ping`,
+  `config`, `list`, `find`, `render`, `export`, `exportAll`, `refs`, `scan`, `assign`, `update`,
+  `import`. The menu item *Tools › Thinhnv › Fig Editor - Agent: Process Requests* answers at once
+  (handy with MCP for Unity's `execute_menu_item`). Off switch: *Preferences › Thinhnv › Fig Editor ›
+  Answer agent requests*.
+- **`Tools~/fig-agent/fig_agent.py`**: sends bridge requests and waits for the answer, and checks
+  references offline (config, GUIDs, where a texture is used, problems) without Unity.
+- **Skill** `unity-fig-assets`: the workflow and rules for agents. *Tools › Thinhnv › Fig Editor -
+  Agent: Install Skill* (or the button in Preferences) copies it into `<project>/.claude/skills/`.
+
+Command reference: [`Tools~/fig-agent/README.md`](../../Tools~/fig-agent/README.md).
+
 ## Undo and saving
 
 Canvas edits, the Design panel, renaming, visibility and lock, reordering, creating, duplicating and
@@ -209,6 +228,7 @@ zip members other than `canvas.fig` are kept byte for byte.
 | `FigDefaultSchema.cs`, `FigJson.cs` | The schema written into imported files; a JSON reader |
 | `FigImportWindow.cs`, `FigmaSettings.cs` | Import / update window; the access token preferences |
 | `FigProjectConfig.cs`, `FigProjectConfigEditor.cs`, `FigTextureExport.cs` | The project config and its inspector; exporting layers into textures |
+| `FigAgentBridge.cs` | The agent bridge (file requests from coding agents) and the skill installer |
 | `FigTileCache.cs` | Threaded tile cache, lifted drag layer, image decoding |
 | `FigGeometry.cs` | Affine transforms and rectangle helpers |
 | `FigTheme.cs` | Colours, styles and the vector icons |

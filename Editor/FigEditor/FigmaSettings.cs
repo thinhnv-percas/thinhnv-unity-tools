@@ -120,7 +120,37 @@ namespace Thinhnv.UnityTools.FigEditor
                     }
                 }
             }
+
+            EditorGUILayout.Space(12);
+            EditorGUILayout.LabelField("Agents", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Coding agents (Claude Code and others) drive the Fig Editor in this open editor through files in " + FigAgentBridge.Folder +
+                ": find and render layers, export textures, update from Figma, check which prefabs use a texture, assign sprites. " +
+                "Install the skill to give agents working in this project the instructions and the fig_agent.py helper.",
+                MessageType.None);
+            bool enabled = EditorGUILayout.Toggle(new GUIContent("Answer agent requests", "Run requests written to " + FigAgentBridge.Folder + "/requests"), FigAgentBridge.Enabled);
+            if (enabled != FigAgentBridge.Enabled)
+            {
+                FigAgentBridge.Enabled = enabled;
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Space(EditorGUIUtility.labelWidth);
+                if (GUILayout.Button("Install agent skill in this project", GUILayout.Width(230)))
+                {
+                    string where = FigAgentBridge.InstallSkill(out string error);
+                    skillResult = where != null ? "Installed in " + where + "." : "Couldn't install: " + error;
+                }
+            }
+
+            if (skillResult != null)
+            {
+                EditorGUILayout.LabelField(" ", skillResult, EditorStyles.wordWrappedMiniLabel);
+            }
         }
+
+        private static string skillResult;
 
         private static void StartTest()
         {

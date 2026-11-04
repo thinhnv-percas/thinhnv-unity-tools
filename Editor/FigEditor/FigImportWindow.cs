@@ -108,25 +108,35 @@ namespace Thinhnv.UnityTools.FigEditor
                 }
             }
 
-            FigProjectConfig.DesignFile entry = FigProjectConfig.Instance?.FindFile(updatePath);
-            if (entry != null)
-            {
-                foreach (FigProjectConfig.TextureTarget t in entry.textures)
-                {
-                    FigNode n = local.Find(t.layerId);
-                    while (n?.Parent != null && n.Parent.Type != "CANVAS")
-                    {
-                        n = n.Parent;
-                    }
+            linkedFrames.AddRange(LinkedFrames(local, updatePath));
+            scope = linkedFrames.Count > 0 ? 1 : 0;
+        }
 
-                    if (n != null && n.Parent != null && !linkedFrames.Contains(n.Id))
-                    {
-                        linkedFrames.Add(n.Id);
-                    }
+        /// <summary>The top-level frames holding the layers the project config exports textures from.</summary>
+        public static System.Collections.Generic.List<string> LinkedFrames(FigFile local, string path)
+        {
+            var result = new System.Collections.Generic.List<string>();
+            FigProjectConfig.DesignFile entry = FigProjectConfig.Instance?.FindFile(path);
+            if (entry == null)
+            {
+                return result;
+            }
+
+            foreach (FigProjectConfig.TextureTarget t in entry.textures)
+            {
+                FigNode n = local.Find(t.layerId);
+                while (n?.Parent != null && n.Parent.Type != "CANVAS")
+                {
+                    n = n.Parent;
+                }
+
+                if (n != null && n.Parent != null && !result.Contains(n.Id))
+                {
+                    result.Add(n.Id);
                 }
             }
 
-            scope = linkedFrames.Count > 0 ? 1 : 0;
+            return result;
         }
 
         private static string TryClipboardLink()
@@ -421,6 +431,22 @@ namespace Thinhnv.UnityTools.FigEditor
                 return;
             }
 
+            if (!WriteDownload(result, path, updatePath != null, out error))
+            {
+                return;
+            }
+
+            FigEditorWindow.OpenImported(Path.GetFullPath(path), pendingNode, updatePath != null);
+            Close();
+        }
+
+        /// <summary>
+        /// Write a downloaded file to <paramref name="path"/> (keeping a .bak of the old one), re-import it,
+        /// log what was downloaded, and record it in the project config (which re-exports textures after an update).
+        /// </summary>
+        public static bool WriteDownload(FigmaDownload result, string path, bool updated, out string error)
+        {
+            error = null;
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path)) ?? ".");
@@ -434,7 +460,7 @@ namespace Thinhnv.UnityTools.FigEditor
             catch (Exception e)
             {
                 error = "Couldn't write " + path + ": " + e.Message;
-                return;
+                return false;
             }
 
             if (IsInProject(path))
@@ -442,7 +468,7 @@ namespace Thinhnv.UnityTools.FigEditor
                 AssetDatabase.ImportAsset(ProjectRelative(path));
             }
 
-            string what = result.Merged != null ? $"updated {result.Merged.Count} frame(s) of " : updatePath != null ? "updated " : "imported ";
+            string what = result.Merged != null ? $"updated {result.Merged.Count} frame(s) of " : updated ? "updated " : "imported ";
             Debug.Log($"Fig Editor: {what}{Path.GetFileName(path)} from Figma (version {result.Version}): {FigUtil.FormatSize(result.BytesDownloaded)} downloaded, " +
                       $"{result.ImagesDownloaded} image(s) downloaded, {result.ImagesReused} reused from the file.");
             if (result.Warnings.Count > 0)
@@ -459,15 +485,14 @@ namespace Thinhnv.UnityTools.FigEditor
             // The project config records the file (link, version) and refreshes its textures after an update.
             try
             {
-                FigProjectConfig.OnFileImported(path, FigmaSource.FromFile(FigFile.Parse(result.Fig)), updatePath != null);
+                FigProjectConfig.OnFileImported(path, FigmaSource.FromFile(FigFile.Parse(result.Fig)), updated);
             }
             catch (Exception e)
             {
                 Debug.LogException(e);
             }
 
-            FigEditorWindow.OpenImported(Path.GetFullPath(path), pendingNode, updatePath != null);
-            Close();
+            return true;
         }
 
         /// <summary>Where a new import goes: the import folder, named after the file; asks before replacing.</summary>
@@ -504,7 +529,7 @@ namespace Thinhnv.UnityTools.FigEditor
             }
         }
 
-        private static string SafeName(string name)
+        internal static string SafeName(string name)
         {
             var sb = new StringBuilder();
             foreach (char c in string.IsNullOrWhiteSpace(name) ? "Figma file" : name.Trim())

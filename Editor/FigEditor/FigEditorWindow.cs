@@ -289,6 +289,29 @@ namespace Thinhnv.UnityTools.FigEditor
             FigImportWindow.ShowUpdate(filePath, from);
         }
 
+        /// <summary>An open Fig Editor window showing <paramref name="path"/>, or null.</summary>
+        internal static FigEditorWindow WindowFor(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                return null;
+            }
+
+            string full = Path.GetFullPath(path);
+            foreach (FigEditorWindow w in Resources.FindObjectsOfTypeAll<FigEditorWindow>())
+            {
+                if (w.file != null && !string.IsNullOrEmpty(w.filePath) && string.Equals(Path.GetFullPath(w.filePath), full, StringComparison.OrdinalIgnoreCase))
+                {
+                    return w;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>The window's file has edits not saved to disk (exports from disk wouldn't include them).</summary>
+        internal bool HasUnsavedEdits => hasUnsavedChanges;
+
         /// <summary>Show a file the Figma import just wrote (and its linked layer), or reload it after an update.</summary>
         public static void OpenImported(string path, string nodeId, bool update)
         {
