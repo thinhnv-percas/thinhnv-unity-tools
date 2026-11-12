@@ -1,0 +1,19 @@
+{
+    "name": "Thinhnv.UnityTools.SpineTool.Editor",
+    "rootNamespace": "",
+    "references": [
+        "spine-unity",
+        "spine-unity-editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
